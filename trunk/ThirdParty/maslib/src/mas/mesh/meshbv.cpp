@@ -2,6 +2,8 @@
 #include <math.h>
 #include "mas/mesh/meshbv.h"
 
+#include <stdlib.h>
+
 namespace mas {
 namespace mesh {
 

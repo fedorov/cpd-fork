@@ -24,12 +24,15 @@ endif
 # Matlab folders
 ifndef MATLAB_ROOT
 MATLAB_ROOT:="C:/Program Files/MATLAB/R2013b"
+MATLAB_ROOT:="/Applications/MATLAB_R2013b.app"
 endif
 ifndef MATLAB_BINDIR
 MATLAB_BINDIR:="$(MATLAB_ROOT)/bin/win64"
+MATLAB_BINDIR:="$(MATLAB_ROOT)/bin/maci64"
 endif
 ifndef MEX_EXT
 MEX_EXT:=mexw64
+MEX_EXT:=mexmaci64
 endif
 ifndef MATLAB_INCLUDEDIR
 MATLAB_INCLUDEDIR:="$(MATLAB_ROOT)/extern/include"

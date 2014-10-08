@@ -372,10 +372,11 @@ private:
 
 // basic abstract node
 class BVNode {
-private:
+public:
+// private:
 	WBVNode _this;
 	WBVNode _parent;
-public:
+//public:
 	PBoundingVolume bv;
 	PBoundableList elems;
 	PBVNodeList children;
