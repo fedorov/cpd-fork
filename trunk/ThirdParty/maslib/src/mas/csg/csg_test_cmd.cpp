@@ -69,27 +69,27 @@ bool doOBBTreeTest(const char filename1[], const char filename2[]) {
 	reader.read(filename2);
 	PolygonMesh mesh2 = reader.getPolygonMesh();
 
-	std::chrono::time_point<std::chrono::system_clock> start, end;
+	//std::chrono::time_point<std::chrono::system_clock> start, end;
 
 	printf("Constructing OBBTrees... \n");
 
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	POBBTree obbt1 = get_obb_tree(mesh1, 0);
-	end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed_seconds = end-start;
-	double contime = elapsed_seconds.count();
-	printf(" tree 1: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//std::chrono::duration<double> elapsed_seconds = end-start;
+	//double contime = elapsed_seconds.count();
+	//printf(" tree 1: %g s, ", contime);
 
 	PBVNodeList nodes1;
 	obbt1->getLeaves(nodes1);
 	printf("has %ld leaves\n", nodes1.size());
 
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	POBBTree obbt2 = get_obb_tree(mesh2, 0);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" tree 2: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" tree 2: %g s, ", contime);
 
 	PBVNodeList nodes2;
 	obbt2->getLeaves(nodes2);
@@ -123,14 +123,14 @@ bool doOBBTreeTest(const char filename1[], const char filename2[]) {
 	 */
 	nodes1.clear();
 	nodes2.clear();
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	obbt1->intersectTree(obbt2, nodes1, nodes2);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" %g s\n", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" %g s\n", contime);
 
-	printf("Intersection sizes: %ld, %ld\n\n", nodes1.size(), nodes2.size());
+	//printf("Intersection sizes: %ld, %ld\n\n", nodes1.size(), nodes2.size());
 
 
 	return true;
@@ -158,13 +158,13 @@ bool doAABBTreeTest(const char filename1[], const char filename2[]) {
 
 	printf("Constructing AABBTrees... \n");
 
-	std::chrono::time_point<std::chrono::system_clock> start, end;
-	start = std::chrono::high_resolution_clock::now();
+	//std::chrono::time_point<std::chrono::system_clock> start, end;
+	//start = std::chrono::high_resolution_clock::now();
 	PAABBTree aabbt1 = get_aabb_tree(mesh1, 0);
-	end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double>  elapsed_seconds = end-start;
-	double contime = elapsed_seconds.count();
-	printf(" tree 1: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//std::chrono::duration<double>  elapsed_seconds = end-start;
+	//double contime = elapsed_seconds.count();
+	//printf(" tree 1: %g s, ", contime);
 
 	PBVNodeList nodes1;
 	aabbt1->getLeaves(nodes1);
@@ -181,12 +181,12 @@ bool doAABBTreeTest(const char filename1[], const char filename2[]) {
 	}
 	 */
 
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	PAABBTree aabbt2 = get_aabb_tree(mesh2, 0);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" tree 2: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" tree 2: %g s, ", contime);
 
 	PBVNodeList nodes2;
 	aabbt2->getLeaves(nodes2);
@@ -220,12 +220,12 @@ bool doAABBTreeTest(const char filename1[], const char filename2[]) {
 
 	nodes1.clear();
 	nodes2.clear();
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	aabbt1->intersectTree(aabbt2, nodes1, nodes2);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" %g s\n", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" %g s\n", contime);
 
 	printf("Intersection sizes: %ld, %ld\n\n", nodes1.size(), nodes2.size());
 	return true;
@@ -252,24 +252,24 @@ bool doBSTreeTest(const char filename1[], const char filename2[]) {
 
 	printf("Constructing BSTrees... \n");
 
-	std::chrono::time_point<std::chrono::system_clock> start, end;
-	start = std::chrono::high_resolution_clock::now();
+	//std::chrono::time_point<std::chrono::system_clock> start, end;
+	//start = std::chrono::high_resolution_clock::now();
 	PBSTree bst1 = get_bs_tree(mesh1, 0);
-	end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed_seconds = end-start;
-	double contime = elapsed_seconds.count();
-	printf(" tree 1: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//std::chrono::duration<double> elapsed_seconds = end-start;
+	//double contime = elapsed_seconds.count();
+	//printf(" tree 1: %g s, ", contime);
 
 	PBVNodeList nodes1;
 	bst1->getLeaves(nodes1);
 	printf("has %ld leaves\n", nodes1.size());
 
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	mas::bvtree::PBSTree bst2 = get_bs_tree(mesh2, 0);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" tree 2: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" tree 2: %g s, ", contime);
 
 	PBVNodeList nodes2;
 	bst2->getLeaves(nodes2);
@@ -303,12 +303,12 @@ bool doBSTreeTest(const char filename1[], const char filename2[]) {
 
 	nodes1.clear();
 	nodes2.clear();
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	bst1->intersectTree(bst2, nodes1, nodes2);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" %g s\n", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" %g s\n", contime);
 
 	printf("Intersection sizes: %ld, %ld\n\n", nodes1.size(), nodes2.size());
 	return true;
@@ -343,24 +343,24 @@ bool doCrossTreeTest(const char filename1[], const char filename2[]) {
 
 	printf("Constructing BVTrees... \n");
 
-	std::chrono::time_point<std::chrono::system_clock> start, end;
-	start = std::chrono::high_resolution_clock::now();
+	//std::chrono::time_point<std::chrono::system_clock> start, end;
+	//start = std::chrono::high_resolution_clock::now();
 	PBVTree bvt1 = get_bv_tree<BV1>(mesh1, 0);
-	end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed_seconds = end-start;
-	double contime = elapsed_seconds.count();
-	printf(" tree 1: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//std::chrono::duration<double> elapsed_seconds = end-start;
+	//double contime = elapsed_seconds.count();
+	//printf(" tree 1: %g s, ", contime);
 
 	PBVNodeList nodes1;
 	bvt1->getLeaves(nodes1);
 	printf("has %ld leaves\n", nodes1.size());
 
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	PBVTree bvt2 = get_bv_tree<BV2>(mesh2, 0);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" tree 2: %g s, ", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" tree 2: %g s, ", contime);
 
 	PBVNodeList nodes2;
 	bvt2->getLeaves(nodes2);
@@ -393,12 +393,12 @@ bool doCrossTreeTest(const char filename1[], const char filename2[]) {
 
 	nodes1.clear();
 	nodes2.clear();
-	start = std::chrono::high_resolution_clock::now();
+	//start = std::chrono::high_resolution_clock::now();
 	bvt1->intersectTree(bvt2, nodes1, nodes2);
-	end = std::chrono::high_resolution_clock::now();
-	elapsed_seconds = end-start;
-	contime = elapsed_seconds.count();
-	printf(" %g s\n", contime);
+	//end = std::chrono::high_resolution_clock::now();
+	//elapsed_seconds = end-start;
+	//contime = elapsed_seconds.count();
+	//printf(" %g s\n", contime);
 
 	printf("Intersection sizes: %ld, %ld\n\n", nodes1.size(), nodes2.size());
 	return true;
