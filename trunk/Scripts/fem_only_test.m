@@ -1,11 +1,7 @@
-
-root = '/Users/fedorov/src/cpd/trunk';
-
+clear; clc; close all;
+root = '/Users/fedorov/github/cpd/trunk';
 add_bcpd_paths;
 
-clear; clc; close all;
-
-root = '/Users/fedorov/src/cpd/trunk';
 %% Read in the label maps
 [X,fX] = read_ply([root '/data/prostate/US_affine_model.ply']);
 [Y,fY] = read_ply([root '/data/prostate/MR_model.ply']);

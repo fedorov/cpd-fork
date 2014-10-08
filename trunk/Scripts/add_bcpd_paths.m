@@ -1,5 +1,3 @@
-root = '/Users/fedorov/src/cpd/trunk';
-
 p_generated = genpath([root '/Core']);
 addpath(p_generated);
 addpath([root '/IO']);
