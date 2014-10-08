@@ -1,0 +1,716 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage[numbers,sort,compress]{natbib}
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\setcounter{tocdepth}{3}
+\usepackage[pdftex]{graphicx}
+
+\usepackage{epstopdf}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage[boxed]{algorithm2e}
+\usepackage{xcolor}
+
+\usepackage{placeins}
+
+\usepackage[T1]{fontenc}
+%\usepackage{caption}
+%\usepackage{subcaption}
+\usepackage[caption=false]{subfig}	%subcaption/subfigure are deprecated
+                                    % 'caption' not recommended by package
+
+\newcommand{\comment}[1]{\textcolor{red}{#1}}
+
+\newcommand{\di}[2]{\frac{\partial#1}{\partial#2}}
+\newcommand{\trans}[1]{#1^{\scriptscriptstyle T}}
+\newcommand{\trace}{\mathrm{tr}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\kron}{\mathrm{kron}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\graphicspath{{./}{./images/}}	% paths for images
+\DeclareGraphicsExtensions{.pdf,.png,.jpg}  % extensions, in order of preference
+
+\begin{document}
+
+\title{Incomplete\comment{?} Surface Registration: Application to MR-TRUS Fusion for Prostate Biopsy}
+
+\author{Siavash~Khallaghi, C.~Antonio~S\'anchez, Joy~Sun, Farhad~Imani, Amir~Khojaste~Galesh~Khale, Orcun~Goksel, Abtin~Rasoulian, Cesare~Romagnoli, Hamidreza~Abdi, Silvia~Chang, Parvin~Mousavi, Aaron~Fenster, Aaron~Ward, Sidney~Fels and Purang~Abolmaesumi% <-this % stops a space
+\thanks{Siavash Khallaghi, C.~Antonio~S\'anchez, Abtin~Rasoulian, Sidney~Fels and Purang~Abolmaesumi are with the Department of Electrical and Computer Engineering, University of British Columbia, Vancouver, BC, Canada.}%
+\thanks{Farhad~Imani, Amir Khojaste~Galesh Khale and Parvin Mousavi are with Queen's University, Kingston, ON, Canada.}
+\thanks{Orcun~Goksel is with ETH, Zurich, Switzerland.}
+\thanks{Cesare~Romagnoli is with the London Health Science Centre, London, ON, Canada.}%
+\thanks{Hamidreza Abdi and Silvia~Chang are with the Vancouver General Hospital, Vancouver, BC, Canada.}%
+\thanks{Joy~Sun, Aaron~Fenster and Aaron~Ward are with the University of Western Ontario, London, ON, Canada.}%
+\thanks{Manuscript received Month XX, Year; revised Month XX, Year.}}
+
+\markboth{IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. X, Month~Year}%
+{Shell \MakeLowercase{\textit{et al.}}: Incomplete Surface Registration...}
+
+% make the title area
+\maketitle
+
+\begin{abstract}
+Surface-based registration has become an invaluable tool in medical imaging. It is often used to facilitate interpretation by fusing information obtained from multiple imaging techniques, for instance between ultrasound (US) and magnetic resonance imaging (MRI).  By deforming one image to match another based on anatomical boundaries, the interior data can be merged to provide augmented views.  Unfortunately, most surface-based techniques have two common drawbacks: properties interior to an organ are often ignored during the registration; and results can be extremely sensitive to errors in segmentation.  The latter can be a major issue when the boundary of the structure is difficult to discern in one of the imaging modalities.  
+% From \cite{audette:2000:surfacereg}: The relevance of surface registration to medical imaging is that there is much useful anatomical information in the form of collected surface points which originate from complimentary modalities and which must be reconciled.
+
+We present a novel non-rigid registration method to address these issues.  The algorithm combines the probabilistic point-set matching approach of coherent point drift (CPD) with a finite element (FE) model to regularize the volumetric deformation field.  This allows us to incorporate prior physical knowledge during registration.  Our algorithm has two major benefits: a) it is very robust to noise and missing data due to soft-correspondences; and b) volumetric properties are incorporated in-loop, which we show has a significant impact on the computed deformation field. We validate results in the context of prostate interventions on data acquired from patients scheduled for prostatectomies and prostate biopsies.  Our method significantly reduces target registration error (TRE) compared to other popular surface-based techniques. We analyze robustness in the presence of missing data by removing portions of the prostate surface near the base and apex, since segmentation in these regions has been shown to be unreliable in US due to poor image contrast \comment{... <- not sure if entirely true...} \comment{need a strong concluding sentence here}
+\end{abstract}
+
+\begin{IEEEkeywords}
+Surface registration, Gaussian mixture model, finite element model, prostate.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\IEEEPARstart{T}{he} goal of an image-guided intervention (IGI) is to localize and track the position of a surgical tool with respect to the surgical plan during a procedure. Surgical planning often requires pre-operative (pre-op) images captured by either computed tomography (CT) or magnet resonance imaging (MRI). For practicality reasons, a different modality is often used during the procedure, typically ultrasound (US).  This is an inexpensive, radiation-free, real-time imaging technique, that has been widely used for abdominal and urological interventions. However, pre-op images are typically acquired weeks in advance, and usually in a different body position.  This can lead to large changes in shape and position of the anatomy between acquisitions. Any navigational assistance during the surgical procedure needs to compensate for these differences. \comment{do we need to first introduce rigid registration here?} Rigid registration is generally limited to inherently rigid structures, e.g. bones in computer assisted orthopedic surgery~\cite{Brounstein11a,Rasoulian12a}, or cases where a rigid approximation of organ motions and deformations is sufficiently accurate, e.g. mechanically assisted prostate biopsies~\cite{Silva13a}. However, this rigidity assumption often does not apply, such as in neurosurgery~\cite{Ferrant00a}, prostate biopsies~\cite{Baumann12a} and liver resections~\cite{Rucker14a}. The classic registration approach is to match extrinsic fiducials or anatomical landmarks~\cite{Arun87a}. However, in many applications finding robust and accurate intrinsic \comment{(extrinsic?)} landmarks is not feasible, and planting external fiducials is not desirable \comment{(why not?, practical?)}. 
+
+In order to address this issue, a number of groups have proposed intensity-based image registration approaches, where the problem is formulated as the minimization of a distance metric between source and target images.  Efficient and accurate multi-modality registration is inherently challenging: establishing a functional relationship between different modalities can be cumbersome \comment{(is that all? That's not a good-enough reason)}. A common approach is to use mutual information (MI) as a distance metric~\cite{Wells96a}, but the image characteristics captured by MRI and US differ significantly (e.g. see Figure \ref{fig:flowchart}), to the extent where MI does not provide an adequate indication of image alignment. To address this, a new metric was proposed called the \textit{modality independent neighborhood descriptor} (MIND)~\cite{Heinrich12a}.  This attempts to provide a local measure of similarity.  It has been successfully used to fuse \comment{(<- is this term common?  Might it need an explanation?... I tried in the abstract)} MR and transrectal ultrasound (TRUS)~\cite{Sun13a}. Although MIND is more robust to the differing intensity information, it still requires a significant amount of correspondence in appearance between both modalities. This may be challenging in cases of poor clinical image quality \comment{(Is it expected to be poor?)}. 
+
+Rather than rely on intensity/appearance information, if both the pre-operative and intra-operative images are segmented during the clinical workflow, we can leverage this as part of a surface-based method.  This helps avoid the issue of image dissemblance between modalities.  However, segmentation of anatomical boundaries can be challenging in a number of applications, e.g. prostate interventions, where there is often high variability even among experts~\cite{Smith07a}. The boundary of the anatomy may not even be visible at all, for example the support region during liver resection~\cite{Cash05a,Rucker14a}. Therefore a method that is robust to this variability, or that can handle missing data in regions where there is no clear anatomical boundary, would be highly valuable.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Surface-based Registration}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% In this literature review, we have limited our scope to methods that have been applied to problems in medical imaging and, in particular, prostate interventions. For a more detailed review, the reader is referred to the recent survey paper~\cite{Tam13a}.
+
+Over the past few decades, many effective surface-based registration techniques have been developed specifically for medical imaging applications~(e.g. \cite{Besl92a,Brown07a,Chui03a,Huang07a,Jian11a,Myronenko10a,Wand09a}). These techniques can be classified as either rigid~\cite{Besl92a} or nonrigid~\cite{Brown07a,Chui03a,Huang07a,Masutani01a,Myronenko10a,Wand09a}. Robust registration of surfaces is a difficult task, since the data may include noise, outliers and limited overlap due to poor initialization. Rigid registration involves a small number of degrees-of-freedom, and is typically performed by minimizing a simple quadratic error function.  For non-rigid registration, the transformation model has a much larger degree-of-freedom count, often to the point where the problem is ill-posed: given the supplied data, the system to solve is under-determined.  Thus, we need a high number of correspondences, combined with regularization terms in order to converge to a unique solution.
+
+The first attempts to establish correspondences was done through manual landmark selection~\cite{Cootes95a}.  This is a tedious, time-consuming process and is subject to user variability. In order to automatically identify corresponding pairs of markers, a number of methods rely on the iterative closest point (ICP) algorithm~\cite{Besl92a,Zhang94a} and its variations~\cite{Besl92a,Rohr96a,Rucker14a,Zhang94a}. Unfortunately, the original ICP algorithm is very sensitive to initialization, noise and outliers. One approach to mitigate this is to map the two surfaces into an intrinsic, topologically equivalent space~\cite{Huang07a,Yeo10a,Moradi12a}. To the best of our knowledge, the only intrinsic registration approach for MR-TRUS fusion is the method by Moradi~\textit{et~al}.~\cite{Moradi12a}. Unfortunately, its accuracy is still highly sensitive to contiguous regions of missing data, such as around the apex where the prostate contour has poor visibility~\cite{Moradi12a}. To overcome the ICP limitations in handling noisy data, a relaxation of correspondence is proposed \comment{by who? us? or ``was'' proposed?}, where the mapping between surfaces is probabilistic, such as with a Gaussian Mixture Model (GMM)~\cite{Chui03a,Jian11a,Myronenko10a}. \comment{Should we introduce GMMs?} For a more detailed review of the correspondence problem, the reader is referred to~\cite{Kaick11a}.
+
+Even with the introduction of soft correspondences, establishing meaningful and natural mappings between two surfaces has proven to be very difficult.  Due to the large space of possible solutions allowed by non-rigid deformations, many non-rigid registration algorithms rely on some form of regularization to converge. Constraining deformations can either be done implicitly or explicitly. An example of an implicit constraint is a statistical deformation model (SDM), which is constructed from a population of valid nonrigid transformations. By limiting the transformation to the convex hull of SDMs, the solution to the registration problem is formulated as a linear combination of SDM basis transforms~\cite{Hu12a,Ashraf02a}.  This should be valid if the training population was large enough. Although the training stage of SDMs can be done during planning, if possible, it would be desirable to remove this step entirely. \comment{<- I don't understand this brief description of SDMs} Explicit constraints are often in the form of regularizers, where prior knowledge about the transform is incorporated as a penalty term in a minimization problem. This prior knowledge, based on the strength of the prior, may constrain surface deformations alone~\cite{Cerveri14a,Myronenko10a} or the entire volumetric deformation within a closed surface~\cite{Chui03a,Karnik10a}. Other regularizers take advantage of intrinsic characteristics of the surface, i.e. use of isometry~\cite{Huang08a,Sahillioglu12a,Zhang08a,Zheng10a}, or biomechanical properties of the anatomy~\cite{Cash05a,Ferrant01a,Moradi12a,Noe10a,Rucker14a,Farheen12a}.
+
+The choice of the regularizer is particularly important for deformable organs: in addition to guiding the search and avoiding local minima, it directly affects the composition of the deformation field inside the anatomy. This region, in a number of applications, is the region of interest during an IGI. One drawback of surface-based regularizers is that the deformation field inside the surface is not considered during the course of the registration: it can only be recovered via post-registration interpolation. In our experience, this decreases the robustness of registration when data is removed (see Section~\ref{sec:exp2}). In this paper, we chose a finite element (FE) model for regularization since the nature of deformations is known to be biomechanical. To the best of our knowledge, most existing FEM-based surface-to-surface registration techniques use a quasi-static approach \comment{quasi-static definition?}~\cite{Cash05a,Ferrant01a,Moradi12a,Noe10a,Rucker14a}. \comment{...transition required...}As a first method of comparison, to demonstrate the value of soft correspondences, we implemented a variation of Ferrant~\textit{et~al.}~\cite{Ferrant01a} which uses ICP to model surface based forces (see Section~\ref{sec:icpfem}). We call this approach ICP-FEM. As a second comparison, we chose the popular thin-plate splines robust point matching (TPS-RPM)~\cite{Chui03a} to investigate the added value of biomechanical regularization. \comment{why mention our comparisons in this related work section?}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Contributions}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+In this work, we aim to improve the accuracy of IGIs by developing a new non-rigid surface-based registration approach which considers the biomechanical nature of the deformation between pre-operative and intra-operative acquisitions. To compensate for segmentation difficulties, we propose to only segment the anatomy in regions where the boundary can be reliably and precisely traced. The proposed registration approach aligns an FE model of the organ (which is built from the pre-procedure images in advance) to its incomplete segmented geometry in the interventional space. We then validate our registration algorithm in the context of MR-TRUS fusion for prostate biopsies. The major contributions of this work are as follows:
+\begin{enumerate}
+	\item We introduce a novel technique, GMM-FEM registration, that combines the outliers/missing data rejection properties of the GMMs with a biomechanical regularizer supplied by the FEM.
+	\item We validate our registration approach on MR-TRUS images acquired from two sets of patients, i.e. prostatectomy and prostate biopsy. \comment{is this a contribution?}
+	\item We compare our registration approach to two other surface-based registration methods: i.e. TPS-RPM and ICP-FEM. \comment{is this a contribution?}
+\end{enumerate}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Method}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}[t]
+\center
+\includegraphics[width = 0.95\textwidth]{flow1}
+\caption{Overview of the registration framework. The pre-operative (MR) image is taken before the procedure and is segmented to create a surface representation of the anatomy, in this case the prostate. This surface is then used to create an FE model of the volume. At the beginning of the procedure, an intra-operative (3D-TRUS) image is acquired and parts of the anatomy (midgland) are segmented. The GMM-FEM registration maps targets from the surface in the pre-operative plan to that of the intra-operative space.}
+\label{fig:flowchart}
+\end{figure*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+An outline of our proposed GMM-FEM registration approach is shown in Figure~\ref{fig:flowchart}. We model the surface-to-surface registration as a probability density estimation problem, where one surface is considered as defining a probability distribution and the other as observations from that distribution. A good representation of such distributions are mixture models and, in particular, Gaussian-mixture models (GMMs), which have widely been used to establish soft correspondence~\cite{Myronenko10a,Rasoulian12a,Jian11a}. A GMM is a parametric probability density function represented as a weighted sum of Gaussian densities.  Following this soft correspondence scheme, vertices of the source surface are assumed to be the centroids of Gaussian components, each presented by a mean and a variance. For simplicity, we assume the variance to be isotropic in all directions for all components.  In this work, the source surface is extracted from the MR and, the target surface (i.e. observations) are extracted from the TRUS.  A full list of notations used in this work is presented in Table \ref{tbl:notation}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{table}[!bht]
+  \centering
+  \caption{Mathematical Notations \label{tbl:notation}}
+  \begin{tabular}{lp{0.55\columnwidth}}
+  \hline
+    $D$ & Dimension of the surfaces\\
+    $X_{N\times D}$ & Observations\\
+    $Y_{M\times D}$ & GMM centroids\\
+    $U_{J\times D}$ & FEM nodal displacements\\
+    $x_n$ & n-th point of observations\\
+    $y_m$ & m-th GMM centroids\\
+    $\vec{x}_{DN \times 1},\vec{y}_{DM \times 1},\vec{u}_{DJ \times 1}$ & Rasterized representation of $X$, $Y$ and $U$\\
+    $\Phi_{M\times J}$ & FEM interpolation matrix\\
+    $K$ & Stiffness matrix\\
+    $E$ & Young's modulus\\
+    $\nu$ & Poisson's ratio\\
+    $P_{M\times N}$ & GMM posterior probabilities\\ 
+    $\sigma^2$ & Variance of Gaussian components\\
+    $0{\leq}w{\leq}1$ & Estimate of outliers/missing data\\
+    $\diag{(\vec{v})}$ & Diagonal matrix of a vector $\vec{v}$\\
+    $I$ & Identity matrix\\
+    $\tilde{P} = \kron{(P,I_{D\times{D}})}$ &Kronecker product of $P$ and $I$\\
+    $1$ & Column vector of all ones\\
+    \hline\\
+  \end{tabular}
+\end{table}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{GMM-FEM Registration}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The non-rigid registration is constrained by minimizing volumetric strain energy of an FE model. In place of setting boundary conditions, we drive the surface of the model using implicit surface-to-surface forces, from source to target. These forces arise by trying to move surface vertices to their optimal target positions.  These optimal positions are determined by a maximum a posteriori optimization problem for independent observations, and can be solved by minimizing the log-likelihood function: 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:loglike}
+E(U,\sigma^2) = -\sum_{n=1}^N\log\sum_{m=1}^MP(y_m)P(x_n|y_m+\Phi_mU),
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\comment{What is the motivation for this?  I think we need to start from the beginning, with $y_m + v_m$, then say that since we are dealing with FE nodes but this expression only involves points on the surface of the model, we need an interpolation matrix $\Phi$.}  The unknowns, i.e. $\sigma^2$ and $U$, are solved using an EM algorithm. Initially, the variance is set to an arbitrary large value \comment{<- is this true?  I believe we estimate it from the data, just as in CPD}. In the expectation part, we compute how likely an observation corresponds to a GMM centroid by calculating the posterior probability
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:prob}
+P(x_n|y_m+\phi_mU) = \frac{\exp{\left(-\frac{1}{2}\frac{\left\|x_n -(y_m+\Phi_mU)\right\|^2}{\sigma^2}\right)}}{\sum_{j=1}^M\exp{\left(-\frac{1}{2}\frac{\left\|x_n -(y_j+\Phi_jU)\right\|^2}{\sigma^2}\right)} + c},
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $c=(2\pi\sigma^2)^{D/2}\frac{w}{1-w}\frac{M}{N}$ is the contribution of an additional uniform distribution to account for noise, outliers and missing data \comment{...insert description or intuition of $w$...}. Ignoring constants independent of $U,\sigma^2$, we can rewrite the maximization step of Equation~\eqref{eq:loglike} with an added FE regularizer:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{eqnarray} \label{eq:obj}
+Q(U,\sigma^2) &=& \frac{1}{2\sigma^2}\sum_{m,n=1}^{M,N}P(y_m|x_n)\left\|x_n- (y_m+\Phi_mU)\right\|^2 \nonumber\\
+&& + \frac{N_PD}{2}\log(\sigma^2) + \frac{\beta}{2}\trans{\vec{u}}K\vec{u},
+\end{eqnarray}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $N_P=\sum_{m,n=1}^{M,N}P(y_m|x_n){\leq}N$, with $N_P=N$ if and only if $w=0$ \comment{...what does this mean or imply?...}. The $\beta$ parameter controls the trade-off between the tightness of the fit and regularization. The stiffness matrix $K$ is derived directly from the FE model assuming a linear material.  Full details of this computation are given in Appendix~\ref{ap:FEM}. 
+
+To simplify the numerical implementation, we can convert the matrix form of Equation~\eqref{eq:obj} into a rasterized vector one, yielding
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}\label{eq:matrixrep}
+    Q(\vec{u},\sigma^2) & = \dfrac{1}{2\sigma^2}\left[ \trans{\vec{x}}\diag\left(\trans{\tilde{P}}1\right)\vec{x} -2\;\trans{\vec{x}}\trans{\tilde{P}}(\vec{y}+\tilde{\Phi}\vec{u}) \right.\notag\\
+    & \qquad \left. +\;\trans{(\vec{y}+\tilde{\Phi}\vec{u})}\diag\left(\tilde{P}1\right)(\vec{y}+\tilde{\Phi}\vec{u}) \right]\notag\\
+    & \qquad + \dfrac{N_PD}{2}\log(\sigma^2) + \dfrac{\beta}{2}\trans{\vec{u}}K\vec{u}.
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Optimal nodal displacements are obtained by minimizing Equation~\eqref{eq:matrixrep} with respect to the vector $\vec{u}$. This yields the sparse linear system
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}\label{eq:Mstep}
+        \left[\trans{\tilde{\Phi}}\diag\!\left(\tilde{P}1\right)\tilde{\Phi} 
+            + \beta \sigma^2K\right] \vec{u} & = \left[\trans{\tilde{\Phi}}\tilde{P}\vec{x}
+            -\trans{\tilde{\Phi}}\diag\!\left(\tilde{P}1\right)\vec{y}\right],
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+which can easily be solved for the nodal displacements $\vec{u}$ using any sparse linear solver.  Now that we have an updated estimate of FE nodal displacements (and hence locations), we update the GMM probability distribution.  The algorithm iterates between the expectation step (updating $\sigma^2$) and maximization step (updating $\vec{u}$) until the variance drops below a certain threshold.  The expectation step is exactly as in Myronenko~\textit{et~al.}~\cite{Myronenko10a} and is presented here only for completeness:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+\sigma^2 = & \frac{1}{N_PD}\sum_{m,n=1}^{M,N}\left\|x_n- (y_m+\Phi_mU)\right\|^2 \nonumber\\
+= & \frac{1}{N_PD}\left[\trace\!\left(X^T\diag(P^T1)X\right)-2\trace\!\left((PX)^T(Y+{\Phi}U)\right)\right.\nonumber\\
+& \left.+\trace\!\left((Y+{\Phi}U)^T\diag(P1)(Y+{\Phi}U)\right)\right] \label{eq:estep1}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+which is equivalent to the following in rasterized representation:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align} 
+\sigma^2 = & \frac{1}{N_PD}\left[\vec{x}^t\diag\!\left(\tilde{P}^T1\right)\vec{x} -2\vec{x}^T\tilde{P}^T(\vec{y}+\tilde{\Phi}\vec{u})\right.\nonumber\\
+  & \left.+(\vec{y}+\tilde{\Phi}\vec{u})^T\diag\!\left(\tilde{P}1\right)(\vec{y}+\tilde{\Phi}\vec{u})\right]. \label{eq:estep2}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Note that to form an FE model from a surface, we often need to add interior nodes. This can be done with most FE-meshing tools. In our implementation, internal nodes are appended to the end of the node list. As a result, the interpolation matrix \comment{... which we should have defined earlier...} has the form, $\Phi=\begin{bmatrix} I_{M\times M} & 0\\ 0 & 0 \end{bmatrix}$. For biomechanical material properties, we apply a homogeneous elastic material with a constant Young's modulus to all elements.
+
+To segment the prostatectomy and biopsy data, we used Stradwin~\cite{Treece00a} and 3D Slicer~\cite{Fedorov12a}, respectively. We then used TetGen~\cite{Si06a} to create a tetrahedral volumetric mesh of the prostate.  The models used in this study are composed of $\approx7500$ elements. Throughout our experiments, we used a stopping condition of $\sigma^2\leq1e^{-4}~\mathrm{mm}^2$, Young's modulus of $E=5$~kPa, which is in the range of values reported in~\cite{Kemper04a} for the prostate, and a Poisson's ratio of $\nu=0.49$. We investigate the sensitivity to biomechanical properties in Section~\ref{sec:exp3}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Relationship to CPD}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The proposed registration algorithm builds on the soft correspondence approach proposed by Myronenko~\textit{et~al.}~\cite{Myronenko10a}. In the original CPD algorithm, the maximization step solves for the optimal set of weights, $W$, that satisfies
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:cpd1}
+\left[\diag(P1)G + \lambda\sigma^2I\right]W = PX - \diag\left(P1\right)Y,
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $G_{M \times M}$ is a kernel matrix with elements $g_{ij}=\exp{\left(-\frac{\left\|y_i- y_j)\right\|^2}{2\beta^2}\right)}$ and $\beta$ is the width of the Gaussian which controls motion coherence of the model (i.e.~coherence width). Writing Equation~\eqref{eq:cpd1} in rasterized form yields
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:cpd2}
+\left[\diag(\tilde{P}1)\tilde{G} + \lambda\sigma^2\tilde{I}\right]\vec{w} = [\tilde{P}\vec{x} - \diag\left(\tilde{P}1\right)\vec{y}].
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\comment{I don't really agree with the following comparison... what we really should be saying is that rather than trying to enforce coherence in surface deformation by making assumptions of a low-pass filter on surface modes, we use a physics-inspired FE model.  This would give more of a motivation for our work and a more intuitive comparison rather than commenting on similarities in the equations..}In general, the interpolation term, $\trans{\tilde{\Phi}}$, in Equation~\eqref{eq:Mstep} is not invertible . However, for cases where the inverse does exist \comment{... which is practically never...}, we can simplify this term from Equation~\eqref{eq:Mstep}. Thus, Equations~\eqref{eq:Mstep} and \eqref{eq:cpd2} show a direct relationship. The identity term in Equation~\eqref{eq:cpd2} can be thought of as an identity stiffness matrix for the CPD and the Gaussian term, $\tilde{G}$, corresponds to the interpolation term, $\tilde{\Phi}$, in our framework \comment{...except that we've ignored one of them assuming it's the identity, so really it only compares if G=I}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Related Registration Methods Used for Comparison}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This section provides a minimal description of the two registration methods that have been used as a basis for comparison. For a detailed discussion on the mechanics of these methods, the reader is referred to relevant papers~\cite{Chui03a,Ferrant01a}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{TPS-RPM}\label{sec:tpsrpm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This \comment{...insert full name of algorithm...} algorithm solves the registration problem using a similar EM algorithm. The maximization step, Equation (19) in~\cite{Chui03a}, can be written as
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+\argmin_{(d,w)} E(d,w) = & \argmin_{(d,w)} \left\|MX-Yd-{\Psi}w\right\|^2 \nonumber\\
+  & + {\lambda_1}\trace({\trans{w}{\Psi}w})\nonumber\\
+  & + {\lambda_2}\trace({\trans{(d-I)}(d-I)}), \label{eq:tpsrpm}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $M$ is the correspondence matrix, $\Psi$ is the 3D TPS kernel, $w$ are the TPS weights, $d$ is the affine component of the total transform and $\lambda_1$ and $\lambda_2$ control the contribution of affine and nonrigid components. The authors use deterministic annealing in the expectation step to decrease the temperature, $T$, \comment{where does $T$ appear in the above?} and the regularization weight. The temperature in their framework corresponds to variance in ours. The authors have kindly provided an open-source Matlab version of TPS-RPM that is freely available to the scientific community \comment{if it's freely available, then why did they have to explicitly provide it to us?}. Following the registration, in order to calculate the internal deformation field, we used the TPS kernel to propagate surface deformations inside the prostate as described in~\cite{Sibson91a}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{ICP-FEM}\label{sec:icpfem}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The quasi-static \comment{... why are we calling it quasi-static?...} registration approach by Ferrant~\textit{et~al.}~\cite{Ferrant01a} deforms the surface of the source object to that of the target by iteratively applying external forces to the surface of the membrane. Deformations of the surface are discretized using finite differences which yields a semi-implicit iterative update method for nodal displacements provided that the time step, $\tau$, is small enough \comment{... what is $\tau?$?...}. This yields the following update equation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation}\label{eq:icpfem}
+(I+\tau{K})u^t = u^{t-1} - \tau{F^t},
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $F^t$ is the current estimate of surface forces, $u^{t-1}$ are the previous nodal displacements and $u^t$ is the next estimate of nodal displacements. In our implementation, we used ICP to estimate surface forces. \comment{What do they use?  and why do we use ICP?}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Experiments and Results}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+In this section, we evaluate the proposed nonrigid registration method in a series of experiments with MR-TRUS image pairs acquired from patients who underwent a prostate intervention. The data acquisition protocol was approved by the institutional ethics board \comment{do we need to put in an identifier?}, and in each case patients provided written consent to be included in the study. The rest of this section is divided into three subsections. In Section~\ref{sec:data}, we discuss the data acquisition, segmentation protocol and the initialization of the registration. Subsequently, we validate our registration method using intrinsic fiducials found in the interior of the prostate, and compare to two other surface-based registration methods (i.e. TPS-RPM and ICP-FEM). Accuracy is quantitatively evaluated by measuring the target registration error (TRE) between pairs of fiducials found interior to the prostate. This is described in Section~\ref{sec:exp1}. To test the importance of including the FE regularizer in-loop, in Section~\ref{sec:exp2}, we compare to a method in which the final deformation field is only computed as a post-processing step. Finally, in Section~\ref{sec:exp3}, we investigate the sensitivity of our approach to biomechanical parameters that control the regularization term in the registration.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Data}\label{sec:data}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}[t]
+	\centering
+	\subfloat[][Ex~vivo prostate\label{fig:prostdata1}]{\includegraphics[width=0.3\columnwidth,height=1.2in]{prostatectomydata1}}
+	\subfloat[][Ex~vivo MRI\label{fig:prostdata2}]{\includegraphics[width=0.60\columnwidth,height=1.2in]{prostatectomydata2}}\\
+	\subfloat[][Initial alignment\label{fig:prostdata4}]{\includegraphics[width=0.3\columnwidth,height=1.2in]{US_initial_prostatectomy}}
+	\subfloat[][In~vivo TRUS\label{fig:prostdata3}]{\includegraphics[width=0.60\columnwidth,height=1.2in]{prostatectomydata3}}
+% \begin{subfigure}[b]{0.3\columnwidth}
+% \includegraphics[width=\columnwidth,height=1.2in]{images/prostatectomydata1.png}
+%  \caption{Ex~vivo prostate}
+%       \label{fig:prostdata1}
+% \end{subfigure}
+%     \begin{subfigure}[b]{0.60\columnwidth}
+% \includegraphics[width=\columnwidth,height=1.2in]{images/prostatectomydata2.png}
+%  \caption{Ex~vivo MRI}
+%       \label{fig:prostdata2}
+% \end{subfigure}\\
+% \begin{subfigure}[b]{0.3\columnwidth}
+%     \includegraphics[width=\columnwidth,height=1.2in]{images/US_initial_prostatectomy.png}
+%  \caption{Initial alignment}
+%       \label{fig:prostdata4}
+% \end{subfigure}
+% \begin{subfigure}[b]{0.6\columnwidth}
+%     \includegraphics[width=\columnwidth,height=1.2in]{images/prostatectomydata3.png}
+%  \caption{In~vivo TRUS}
+%       \label{fig:prostdata3}
+% \end{subfigure}
+\caption{Prostatectomy data collection protocol. Following the prostatectomy, strand-shaped fiducials are attached to the prostate to mark anatomical coordinates of the prostate in the MR. These strands are highlighted with a green circle on the prostate (a) and are visible MRI (b). During the prostatectomy, a volumetric US is acquired using a side-firing probe (d). Both MR and TRUS images are segmented and brought to an initial alignment at the beginning of the registration (c). \label{fig:prostatectomyData}}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Prostatectomy}\label{sec:data1}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We acquired MR and TRUS volumes of ten patients scheduled for a prostatectomy. Even though the deformation is not purely mechanical \comment{ why not? }, the residual nonrigid deformation cannot be captured using an affine transform alone. Furthermore, for this data set, the boundary of the prostate could be more reliably segmented in both modalities \comment{more easily compared to what?}. Figure~\ref{fig:prostatectomyData} shows the major steps in the data acquisition and alignment protocol. The TRUS volumes were collected with an Ultrasonix Touch machine (Ultrasonix, Richmond, Canada) using a BPL-95/55 side firing transducer mounted on a motorized cradle. The parasagittal 2D-TRUS images were acquired at $5^\circ$ intervals and reconstructed into a 3D-TRUS volume with an axial and lateral spacings of $0.12$~mm. This is shown in Figure~\ref{fig:prostdata3}. Following the prostatectomy, the prostate was fixated in a $10\%$ buffered formalin solution for perservation and MR-visible strand-shaped fiducial markers were applied to the specimen using the protocol by Gibson~\textit{et~al.}~\cite{Gibson12a}. This is shown in Figure~\ref{fig:prostdata1}. This specimen was scanned using a Discovery MR750 scanner (GE Healthcare, Waukesha, USA) at 3T using an endorectal coil (Prostate eCoil, Medrad, Warrendale, USA) to acquire T1-weighted MR images with a $0.3$~mm slice thickness. This is shown in Figure~\ref{fig:prostdata2}. Both the MR and TRUS volumes were manually segmented under the supervision of an expert clinican. Finally, as seen in Figure~\ref{fig:prostdata3}, the two segmentations were brought into a manual initial alignment using the orientation information from the strands and rough anatomical locations of the based and apex.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}[t]
+	\centering
+	\subfloat[][Segmented MRI (blue)\label{fig:biopsy1}]{\includegraphics[width=0.3\columnwidth,height=1.0in]{ProstateBiopsy_MR}} \hfill
+	\subfloat[][Segmented TRUS (red)\label{fig:biopsy2}]{\includegraphics[width=0.3\columnwidth,height=1.0in]{ProstateBiopsy_US}} \hfill
+	\subfloat[][Initialization of the MRI (blue) and TRUS (red)\label{fig:biopsy3}]{\includegraphics[width=0.3\columnwidth,height=1.0in]{ProstateBiopsy_Initial}}
+    % \begin{subfigure}[b]{0.3\columnwidth}
+    %   \includegraphics[width=\linewidth,height=1.0in]{images/ProstateBiopsy_MR.png}
+    %   \caption{Segmented MRI (blue)}
+    %   \label{fig:biopsy1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.3\columnwidth}
+    %   \includegraphics[width=\linewidth,height=1.0in]{images/ProstateBiopsy_US.png}
+    %   \caption{Segmented TRUS (red)}
+    %   \label{fig:biopsy2}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.3\columnwidth}
+    %   \includegraphics[width=\linewidth,height=1.0in]{images/ProstateBiopsy_Initial.png}
+    %   \caption{Initialization of the MRI (blue) and TRUS (red)}
+    %   \label{fig:biopsy3}
+    % \end{subfigure}
+    % \hfill
+    \caption{An axial slice of the T2-weighted MRI (a). An axial slice 3D-TRUS volume (b). The segmented MRI (blue) and 3D-TRUS (red) are initialized using RAS axis and center of mass alignment (c). \label{fig:biopsy}}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Prostate Biopsy}\label{sec:data2}
+The second set of data was acquired from ten patients scheduled for prostate biopsy. Figure~\ref{fig:biopsy} shows the major steps of our data collection, segmentation and initialization protocol. We acquired T2-weighted MR images from ten patients using a 3 Tesla GE Excite HD MRI system (Milwaukee, WI, USA) with a spacing of $0.27~\times~0.27~\times~2.2$ mm. These images were segmented by a graduate student familiar with prostate anatomy and verified by an expert urologist \comment{<- is this important to say?}. This step is shown in Figure~\ref{fig:biopsy1}. The TRUS images were acquired using a 3D-TRUS mechanical biopsy system~\cite{Bax08a} with a Philips HDI-5000 US machine and a C9-5 transducer using an axial rotation of the biopsy probe. The TRUS images were reconstructed into a 3D-volume with a spacing of $0.19~\times~0.19~\times~0.19$ mm. Subsequently, the 3D-TRUS volumes were segmented by a graduate student and verified with a radiologist \comment{<- again... why is this important?  We have clinicians as authors on the paper}. This step is shown in Figure~\ref{fig:biopsy2}. Finally, as shown in Figure~\ref{fig:biopsy3}, the prostate surfaces from the MRI and TRUS were brought to an initial position using right-anterior-superior (RAS) coordinates and center of mass alignment.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Rigid Registration}\label{sec:data3}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Following initial alignment, we performed a global rigid registration using CPD~\cite{Myronenko10a} between MR and TRUS surfaces to compensate for residual errors in the position and orientation. For the prostatectomy data, we opted to perform an affine registration to compensate for the bulk of non-linearities due to the ex~vivo nature of the data \comment{<- I don't really agree with doing this... the bulk should still be captured by the FE model, allowing for volume change}. The global registration has only one free parameter, $w$, set to zero in our experiments \comment{why?}. Throughout our experiments, the global registration component did not exhibit sensitivity to initialization. \comment{<-what does this mean?  Should it?  It's however sensitive CPD is.  Besides, we should have a good initial manual alignment.}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Registration to Full and Partial Surfaces}\label{sec:exp1}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Prostatectomy}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+As a first set of experiments, we used the prostatectomy data described in Section~\ref{sec:data1} to validate our registration pipeline. Figure~\ref{fig:exp2reg1} shows a typical affine registration result which is the starting point for our nonrigid registration. Figures~\ref{fig:exp1reg2}, \ref{fig:exp1reg3} and \ref{fig:exp1reg4} show the result of TPS-RPM, ICP-FEM and our proposed GMM-FEM registration, respectively. For all three nonrigid registration methods, we set the estimate of outliers, $w$, to zero.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}
+	\centering
+	\subfloat[][Affine\label{fig:exp2reg1}]{\includegraphics[width=0.45\textwidth]{P030_Affine}} \hfill
+	\subfloat[][TPS-RPM with $T_i=100$ and $\lambda_2/{\lambda_1=0.01}$\label{fig:exp2reg2}]{\includegraphics[width=0.45\textwidth]{P030_TPS_RPM}}\\
+	\subfloat[][ICP-FEM with $\tau=0.001$, $E=5.0$~kPa and $\nu=0.49$\label{fig:exp2reg3}]{\includegraphics[width=0.45\textwidth]{P030_ICP_FEM}}\hfill
+	\subfloat[][GMM-FEM with $E=5.0$~kPa, $\nu=0.49$ and $\beta=0.05$\label{fig:exp2reg4}]{\includegraphics[width=0.45\textwidth]{P030_GMM_FEM}}
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P030_Affine.png}
+    %   \caption{Affine}
+    %   \label{fig:exp2reg1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P030_TPS_RPM.png}
+    %   \caption{TPS-RPM with $T_i=100$ and $\lambda_2/{\lambda_1=0.01}$}
+    %   \label{fig:exp2reg2}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P030_ICP_FEM.png}
+    %   \caption{ICP-FEM with $\tau=0.001$, $E=5.0$~kPa and $\nu=0.49$}
+    %   \label{fig:exp2reg3}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P030_GMM_FEM.png}
+    %   \caption{GMM-FEM with $E=5.0$~kPa, $\nu=0.49$ and $\beta=0.05$}
+    %   \label{fig:exp2reg4}
+    % \end{subfigure}
+    \caption{An example of registration to full data. Registration results on prostatectomy data following surface based registration between the MR (blue) and TRUS (red) for: Rigid (a), TPS-RPM (b), ICP-FEM (c) and GMM-FEM (d). The estimate for missing data, $w$, was fixed at zero for all three nonrigid methods. \label{fig:exp2fig1}}
+\end{figure*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We observed that the TPS-RPM registration becomes highly unstable for temperatures $T\leq1.0$~$\mathrm{mm}^2$, which is orders of magnitude larger than the GMM-FEM stopping condition \comment{...might need to remind them that temperature = $\sigma$ in our case, so is directly related to the stopping condition}. The same phenomena happens with ICP-FEM, when the distance between two corresponding surface points drops below $\approx5$~mm, the FE model becomes unstable due to a large number of inverted elements \comment{I'm not sure this is true... for linear materials, FEM is unconditionally stable i.e. it should be able to handle inverted elements without blowing up}. As seen in Figure~\ref{fig:exp2fig1}, the GMM-FEM registration achieves a better surface overlap compared to TPS-RPM and ICP-FEM in this example. One possible explanation is that the combination of soft correspondence and biomechanical regularization makes the GMM-FEM registration more stable at smaller scales, which makes the registration evolve closer to the target surface compared to the two other methods. \comment{<- needs further intuition/support}
+
+In order to visualize the result of our GMM-FEM registration in the interior of the prostate, as shown in Figure~\ref{fig:exp2fig2}, we also resampled the MR image into the space of the TRUS. Figure~\ref{fig:exp2US} shows an axial slice of the prostate in the TRUS and corresponding GMM-FEM registered MRI, respectively. The deformation map \comment{... which shows what?  deformation is 3D...} of the GMM-FEM registration is shown in Figure~\ref{fig:exp2def}, and the dashed line represents the straight plane approximation of the TRUS slice in the space of MR deformation field \comment{<- why aren't we showing deformation in-plane?}. Figure~\ref{fig:exp2ch} is the checkerboard comparison of Figure~\ref{fig:exp2gmmfem} and \ref{fig:exp2US}. As seen in Figure~\ref{fig:exp2ch}, the boundary of the prostate matches that of the TRUS, which is expected since the proposed method optimizes for best surface overlap. As seen in Figure~\ref{fig:exp2def}, the majority of the correction is made near the surface, or in the base region where the bladder does not fixate the prostate. \comment{<- it looks like it's more than just near the surface: almost half the prostate is a different colour}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}
+	\centering
+	\subfloat[][TRUS\label{fig:exp2US}]{\includegraphics[width=0.45\columnwidth]{ProstatectomyResults_US}}\hfill
+	\subfloat[][GMM-FEM\label{fig:exp2gmmfem}]{\includegraphics[width=0.45\columnwidth]{ProstatectomyResults_MR_FEM}}\\
+	\subfloat[][Deformation map\label{fig:exp2def}]{\includegraphics[width=0.5\columnwidth]{DeformationGridProstatectomy2}}\hfill
+	\subfloat[][Comparison of (a) and (b)\label{fig:exp2ch}]{\includegraphics[width=0.45\columnwidth]{ProstatectomyResults_CH}}
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/ProstatectomyResults_US.png}
+    %   \caption{TRUS}
+    %   \label{fig:exp2US}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/ProstatectomyResults_MR_FEM.png}
+    %   \caption{GMM-FEM}
+    %   \label{fig:exp2gmmfem}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.50\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/DeformationGridProstatectomy2.png}
+    %   \caption{Deformation map}
+    %   \label{fig:exp2def}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/ProstatectomyResults_CH.png}
+    %   \caption{Comparison of (a) and (b)}
+    %   \label{fig:exp2ch}
+    % \end{subfigure}
+    \caption{Typical results for a prostatectomy data. The axial slice of TRUS (a) and the corresponding GMM-FEM (b) registration results. The deformation map of the nonrigid registration and the corresponding TRUS slice (dashed line) are also shown in (c). The checkerboard of (a) and (b) is shown for comparison. \label{fig:exp2fig2}}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}[t]
+	\centering
+	\subfloat[][Examples of fiducial pairs in MR (left column) and TRUS (right column) for prostatectomy (top row) and biopsy (bottom row) data. \label{fig:exp2fiducial1}]{\includegraphics[width=0.6\columnwidth,height=2.95in]{FiducialPair}} \hfill
+	\subfloat[][Segmented urethra in MR (blue) and TRUS (red) for biopsy data.\label{fig:exp2fiducial2}]{\includegraphics[width=0.35\columnwidth,height=3.05in]{Urethra3D_Cropped}}
+% \begin{subfigure}[b]{0.60\columnwidth}
+% \center
+% \includegraphics[width=\textwidth,height=2.95in]{images/FiducialPair.png}
+% \caption{Examples of fiducial pairs in MR (left column) and TRUS (right column) for prostatectomy (top row) and biopsy (bottom row) data.}
+% \label{fig:exp2fiducial1}
+% \end{subfigure}
+% \hfill
+% \begin{subfigure}[b]{0.35\columnwidth}
+% \center
+% \includegraphics[width=\textwidth,height=3.05in]{images/Urethra3D_Cropped.png}
+% \caption{Segmented urethra in MR (blue) and TRUS (red) for biopsy data.}
+% \label{fig:exp2fiducial2}
+% \end{subfigure}
+	\caption{Fiducial pairs used to calculated the TRE.}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{table*}[tb]
+\begin{center}
+\caption{Mean and standard deviation of the TRE (mm) for prostatectomy data following affine and nonrigid registration.}
+\centering
+\begin{tabular}{c| c| c}
+	\hline
+	Method & TRE & Improvement\\
+	\hline
+	Affine & $3.17 \pm 1.38$ & NA \\
+	\hline
+	TPS-RPM & $3.63 \pm 1.37$ & $-0.46 \pm 1.37$ \\
+	\hline
+	ICP-FEM & $3.37 \pm 1.47$ & $-0.20 \pm 1.47$ \\
+	\hline
+	GMM-FEM & $2.65 \pm 1.29$ & $0.51 \pm 0.31$ \\
+   \hline
+\end{tabular}
+\label{tab:exp2Res1}
+\end{center}
+\end{table*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{table*}[tb]
+\begin{center}
+\caption{Mean and standard deviation of the TRE (mm) for biopsy data following rigid and nonrigid registration.}
+\centering
+\begin{tabular}{c| c| c}
+	\hline
+	Method & TRE & Improvement\\
+	\hline
+	Rigid & $4.44 \pm 1.51$ & NA \\
+	\hline
+	TPS-RPM & $4.2 \pm 1.21$ & $0.24 \pm 1.21$ \\
+	\hline
+	ICP-FEM & $4.94 \pm 1.43$ & $-0.50 \pm 1.43$ \\
+	\hline
+	GMM-FEM & $3.5 \pm 1.1$ & $1.0 \pm 1.1$ \\
+   \hline
+\end{tabular}
+\label{tab:exp1Res1}
+\end{center}
+\end{table*}%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Prostate Biopsy}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+To further validate our registration results, we used the biopsy data which was described in Section~\ref{sec:data2}. In order to maintain the clinical requirements throughout our experiments, we segmented the prostate fully in the MR and only partially in TRUS, i.e. only eleven slices with a thickness of $2.0$~mm were segmented around the midgland. This resulted in a partial segmentation of the prostate, which was roughly 70\% of the base-apex axis of the prostate. Figure~\ref{fig:exp1reg1} shows a typical rigid registration outcome which is the starting point for our nonrigid registration. Figures~\ref{fig:exp1reg2}, \ref{fig:exp1reg3} and \ref{fig:exp1reg4} show the result of TPS-RPM, ICP-FEM and our proposed GMM-FEM registration, respectively.
+
+We observed that the TPS-RPM diverged for temperatures $T\leq10.0$~$\mathrm{mm}^2$ in the presence of missing data. ICP-FEM exhibited the same divergent behavior when the distance between two corresponding surface points dropped below $\approx5$~mm. As seen in Figure~\ref{fig:exp3fig1}, the GMM-FEM registration achieves a better surface overlap compared to TPS-RPM and ICP-FEM in this example.
+
+We observed that for larger estimates of missing data, the GMM-FEM registration treats large deformations as outliers and, subsequently, does not compensate for them. For very small estimates of outliers, $w\approx0$, the registration strives to overfit the FEM to the missing data. In our experiments, this resulted in unrealistic deformations, e.g. inverted elements, around the base and apex regions. Throughout the GMM-FEM registration, we set the estimate of outliers/missing data to $w=0.1$. \comment{The same should hold for other techniques, except for maybe ICP if they account for missing data}
+
+In order to visualize the result of our GMM-FEM registration in the interior of the prostate, as shown in Figure~\ref{fig:exp1fig2}, we resampled the MR image into the space of the TRUS for this dataset as well. Figures~\ref{fig:exp1US} and \ref{fig:exp1gmmfem} show an axial slice of the prostate in the TRUS and corresponding GMM-FEM slice, respectively. Since the prostate is the region of interest during a biopsy, we calculated the deformation field only in this region. As seen in Figure~\ref{fig:exp1ch}, the boundary of the prostate matches that of the TRUS, \comment{<- it's not that easy to see... probably should have a separate figure} which is expected since the prostate was segmented in this region. As seen in Figure~\ref{fig:exp2def}, the registration performs minimal correction in the center of the prostate \comment{<- also, doesn't really follow from the figure... there seems to be a large deformation for almost half the prostate}, which is far from the surface and also in the apex, where, due to lack of segmentation, surface-driven forces do not exist and the pubic arch physically constrains deformations. The majority of the correction is made near the surface and in the base area. This is to be expected, since the end-firing probe pushes in this direction.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}
+	\centering
+	\subfloat[][Rigid\label{fig:exp1reg1}]{\includegraphics[width=0.45\textwidth]{P070_Rigid}}\hfill
+	\subfloat[][TPS-RPM with $T_i=100$ and $\lambda_2/{\lambda_1=0.01}$\label{fig:exp1reg2}]{\includegraphics[width=0.45\textwidth]{P070_TPS_RPM}}\\
+	\subfloat[][ICP-FEM with $\tau=0.001$, $E=5.0$~kPa and $\nu=0.49$\label{fig:exp1reg3}]{\includegraphics[width=0.45\textwidth]{P070_ICP_FEM}}\hfill
+	\subfloat[][GMM-FEM with $w=0.1$, $E=5.0$~kPa, $\nu=0.49$ and $\beta=0.05$\label{fig:exp1reg4}]{\includegraphics[width=0.45\textwidth]{P070_FEM}}
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P070_Rigid.png}
+    %   \caption{Rigid}
+    %   \label{fig:exp1reg1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P070_TPS_RPM.png}
+    %   \caption{TPS-RPM with $T_i=100$ and $\lambda_2/{\lambda_1=0.01}$}
+    %   \label{fig:exp1reg2}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P070_ICP_FEM.png}
+    %   \caption{ICP-FEM with $\tau=0.001$, $E=5.0$~kPa and $\nu=0.49$}
+    %   \label{fig:exp1reg3}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\textwidth}
+    %   \includegraphics[width=\textwidth]{images/P070_FEM.png}
+    %   \caption{GMM-FEM with $w=0.1$, $E=5.0$~kPa, $\nu=0.49$ and $\beta=0.05$}
+    %   \label{fig:exp1reg4}
+    % \end{subfigure}
+    \caption{An example of registration to missing data. Prostate biopsy results following surface based registration between the MR (blue) and TRUS (red) for: Rigid (a), TPS-RPM (b), ICP-FEM (c) and GMM-FEM (d). \label{fig:exp1fig1}}    
+\end{figure*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}
+	\centering
+	\subfloat[][TRUS\label{fig:exp1US}]{\includegraphics[width=0.45\columnwidth]{P069_US_Intensity}}\hfill
+	\subfloat[][GMM-FEM\label{fig:exp1gmmfem}]{\includegraphics[width=0.45\columnwidth]{P069_MR_FEM_Intensity}}\\
+	\subfloat[][Deformation map\label{fig:exp1def}]{\includegraphics[width=0.45\columnwidth]{DeformationGridBiopsy2}}\hfill
+	\subfloat[][Comparison of (a) and (c)\label{fig:exp1ch}]{\includegraphics[width=0.45\columnwidth]{P069_CheckerBoard_Intensity}}
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/P069_US_Intensity.png}
+    %   \caption{TRUS}
+    %   \label{fig:exp1US}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/P069_MR_FEM_Intensity.png}
+    %   \caption{GMM-FEM}
+    %   \label{fig:exp1gmmfem}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.50\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/DeformationGridBiopsy2.png}
+    %   \caption{Deformation map}
+    %   \label{fig:exp1def}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.45\columnwidth}
+    %   \includegraphics[width=\textwidth]{images/P069_CheckerBoard_Intensity.png}
+    %   \caption{Comparison of (a) and (c)}
+    %   \label{fig:exp1ch}
+    % \end{subfigure}
+    \caption{Typical results for a prostate biopsy data. The axial slice of TRUS (a) and the corresponding GMM-FEM (b) registration results. The deformation map of the nonrigid registration and the corresponding TRUS slice (dashed line) are also shown in (c). The checkerboard of (a) and (b) is shown for comparison. \label{fig:exp1fig2}}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Quantitative Validation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Our algorithm was implemented in Matlab (MathWorks, MA), and converges within $\approx10$~seconds on a $3.4$~GHz Intel Core i7 CPU with $8.00$~GB of RAM. To quantify the registration results, we opted to select landmarks on the MR and TRUS images and use these intrinsic fiducials to assess the result of our nonrigid registration. For our ten prostatectomy cases, we were unable to segment the urethra consistently in TRUS for prostatectomy data \comment{<- why not?}, so instead opted to select up to five calcification pairs (a total of thirty) in both modalities per patient. For the biopsy data, we were able to use the in~vivo MRI to segment the urethra in TRUS, which was used for quantitative validation. This yielded a total of fifty landmarks for validation. Figure~\ref{fig:exp2fiducial1} shows an example of corresponding fiducial pairs, i.e. calcifications and urethra, in MR and TRUS. The segmented urethra for biopsy data is shown in Figure~\ref{fig:exp2fiducial2}. The $L_2$ norm of these fiducial pairs were used to quantify the TRE. The mean and standard deviation of the TRE and its improvement are shown in Tables~\ref{tab:exp2Res1} and \ref{tab:exp1Res1} for prostatectomy and biopsy data, respectively.
+
+As seen in Tables~\ref{tab:exp2Res1} and \ref{tab:exp1Res1}, the proposed GMM-FEM registration approach consistently outperforms the TPS-RPM and ICP-FEM methods in terms of TRE. For prostatectomy data, following GMM-FEM registration, the mean TRE is improved by $0.5$~mm. This is a statistically significant improvement over affine registration, since a paired t-test at the 95\% significance rejects the null hypothesis that the two TRE distributions share a common mean ($p<1e-4$) \comment{...need more details about significance test.  It probably deserves its own paragraph.  What is the null-hypothesis?...}. For TPS-RPM and ICP-FEM, the difference in the TRE was not statistically significant. For the biopsy data, we observe a larger improvement in the mean TRE ($1.0$~mm). This is a statistically significant improvement over rigid registration, and running a paired t-test at the 95\% significance rejects the null hypothesis that the two TRE distributions share a common mean ($p<1e-6$). For TPS-RPM and ICP-FEM, the difference in the TRE was not statistically significant.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Regularization vs. Interpolation}\label{sec:exp2}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+In the second set of experiments, we investigate the robustness of our method when parts of the observations were missing. To this end, we removed $w$ \comment{<- might want to use a different variable here, since the $w$ parameter has a significant role in missing data for our algorithm} percent of observation points from base and apex ($w/2$ for each) and then applied our algorithm to the modified surfaces with this estimate of missing data. In order to quantify the performance in the presence of missing data, we compared the internal deformation fields with and without missing observations. We explicitly define robustness as the $L_2$ distance of the deformation field with missing observations to the deformation field when no observations are removed. This implicitly defines robustness as the fidelity of the registration in recovering the same deformation field without missing data. The results of this experiment are shown in Figure~\ref{fig:exp3reg1} for a typical prostatectomy patient. To highlight the significance of including the FEM-based regularization in-loop, we compare to another standard approach: apply a surface-to-surface registration first to estimate surface-to-surface correspondences, in this case, CPD~\cite{Myronenko10a}, then use an FE model in a post-processing step to recover volumetric deformations. Robustness of the resulting deformation fields are shown in Figure~\ref{fig:exp3reg1} and ~\ref{fig:exp3reg2} from GMM-FEM registration and CPD with post-processing interpolation, respectively.  \comment{<- is this comparison fair?  We might need a better explanation as to the core differences between our method and CPD}
+
+Excluding outliers in Figures~\ref{fig:exp3reg1}, internal deformations stay below $2.5$~mm when $20\%$ of the observations are removed from the GMM-FEM registration. Compared to Figure~\ref{fig:exp3reg2}, using surface displacements found through CPD as boundary conditions for the FEM yields an larger errors in recovering the deformations when the same number of observations are removed.
+
+As shown in Figure~\ref{fig:exp3hist1}, the fidelity of GMM-FEM registration progressively decreases as more observations in the base and apex regions are removed. For CPD with post-processing interpolation, as shown in Figure~\ref{fig:exp3hist2}, the fidelity \comment{<- we should probably use a different term, since we're not truly talking about fidelity.  Maybe `consistency'} of the registration around the surface decreases and surface-bending artifacts appear. One possible explanation for this behavior is that for CPD, as opposed to GMM-FEM, points on the surface are not constrained by internal nodes and have more freedom. As a result, the internal deformation field for CPD found through post-registration interpolation is more sensitive to missing observations. \comment{<- I think this can be stated more strongly... CPD ignores internal deformation, whereas FEM explicitly minimizes the internal strain energy, minimizing deformation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}
+	\centering
+	\subfloat[][GMM-FEM\label{fig:exp3reg1}]{\includegraphics[width=0.49\textwidth]{Boxplot_GMM_FEM}}
+	\subfloat[][CPD\label{fig:exp3reg2}]{\includegraphics[width=0.49\textwidth]{Boxplot_CPD_FEM}}\\
+	\subfloat[][Left to right: Spatial distribution of robustness for GMM-FEM registration when 10\%, 20\% and 40\% of observations are removed.\label{fig:exp3hist1}]{\includegraphics[width=0.49\textwidth]{Spatial_Robustness_GMM_FEM}}\hfill
+	\subfloat[][Left to right: Spatial distribution of robustness for CPD registration when 10\%, 20\% and 40\% of data are removed.\label{fig:exp3hist2}]{\includegraphics[width=0.49\textwidth]{Spatial_Robustness_CPD}}
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/Boxplot_GMM_FEM.png}
+    %   \caption{GMM-FEM}
+    %   \label{fig:exp3reg1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/Boxplot_CPD_FEM.png}
+    %   \caption{CPD}
+    %   \label{fig:exp3reg2}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/Spatial_Robustness_GMM_FEM.png}
+    %   \caption{Left to right: Spatial distribution of robustness for GMM-FEM registration when 10\%, 20\% and 40\% of observations are removed.}
+    %   \label{fig:exp3hist1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/Spatial_Robustness_CPD.png}
+    %   \caption{Left to right: Spatial distribution of robustness for CPD registration when 10\%, 20\% and 40\% of data are removed.}
+    %   \label{fig:exp3hist2}
+    % \end{subfigure}
+    \caption{Comparison of in-loop regularization (a) and post-registration interpolation (b) when $w$ percent of the data is removed with $E=5.0$~kPa and $\nu=0.49$. Sagittal slice of robustness for GMM-FEM (c) and CPD (d) registration when different amounts of observations are removed. \label{fig:exp3fig1}}
+\end{figure*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Sensitivity to Biomechanical Parameters}\label{sec:exp3}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+In the final set of experiments, we investigate robustness of our method to changes in regularization weight, Young's modulus and Poisson's ratio. Under the assumption of homogeneous elasticity, it can be shown that the stiffness matrix has a linear relationship with the Young's modulus (see Equations~\eqref{eq:material} and \eqref{eq:stiffness}). As a result, our registration only has two free biomechanical parameters: 1) the product of the regularization weight and elasticity; and 2) Poisson's ratio. In order to examine the sensitivity of our registration method to these parameters, we perturbed the regularization weight and Poisson's ratio for one of our prostatectomy patients. Figure~\ref{fig:exp4fig1} shows the robustness of our registration method for different regularization weights and Poisson's ratios.
+
+As seen in Figure~\ref{fig:exp4weight}, the GMM-FEM registration is sensitive to the regularization weight. When tuning this parameter, the registration approach exhibited three distinct behaviors. For large regularization weights, in this case $\beta{E}\geq5$~kPa \comment{<- you said we were changing the weight, $\beta$, but the is the Young's modulus}, the FEM behaved similar to a rigid object. For very small regularization weights, in this case $\beta{E}\leq0.25$~kPa, the FEM does not provide any regularization and the surface is allowed to move independently of interior nodes. Finally, for regularization values in between two extremes, the registration is constrained using the biomechanical properties of the tissue. Figure~\ref{fig:exp4hist1} shows the spatial distribution of robustness for three different behaviors described above. The deformation field in the interior of the prostate is more robust to perturbations in the regularization weight compared to the surface, which is to be expected since the registration is surface-based \comment{<- I don't think this is expected}.
+
+Figure~\ref{fig:exp4Poisson} shows the sensitivity of the internal deformation field to Poisson's ratio. Apart from the numerical instability of Poisson's ratio near $0.5$, the registration seems less sensitive to perturbations in this parameter compared to the regularization weight. As seen in Figure~\ref{fig:exp4hist2}, similar to changes in regularization weight, perturbations in Poisson's ratio seem to affect the composition of the deformation field near the boundary more than interior regions.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Discussion and Conclusions}\label{sec:disc}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+In this paper, we presented a novel nonrigid surface-based registration approach that is robust to missing data. The proposed registration algorithm converges within ten seconds on a regular desktop PC. We showed the internal deformation found through our proposed method to be robust up to $2.5$~mm when 20\% of observations are removed. This in-loop regularization was approximately 2.5x more robust compared to post-registration interpolation of the internal deformation field.
+
+The GMM-FEM registration method employs probabilistic assignment to establish correspondences and uses a uniform distribution to reject false correspondences for outliers and missing data. While this property is useful for our registration problem, the algorithm rejects large deformations as outliers when the estimate of missing data is set to a large value. One possible extension of this work could be to decouple the effects of missing data and outliers when soft correspondences are made.
+
+One shortcoming of our algorithm is that it requires the MR and TRUS to be segmented prior to the registration. While the MR can be segmented days ahead of time, the 3D-TRUS needs to be segmented within minutes due to clinical requirements. One possible solution is to use an existing fast segmentation method~\cite{Qiu12a}. Of course, since the method is designed to be extremely robust to missing data, we suggest to only segment regions in which the boundary of the anatomy can be clearly distinguished, such as in the mid-gland. This can also help speed up the segmentation process.
+
+In Section~\ref{sec:exp1} we investigated the performance of our registration method using fiducial pairs found in the interior of the prostate. The GMM-FEM algorithm yields a statistically significant improvement over affine ($0.5$~mm) and rigid ($1.0$~mm) registration. While the improvement is small, it should be compared to the acceptable error bounds of a targeted biopsy system. With a TRE of $2.5$~mm, one can obtain a confidence interval corresponding to tow standard deviations from the mean, i.e. the estimated true center of the tumor. If this requirement is met, then 95\% of registered targets come within the clinically significant $5$~mm radius~\cite{Karnik10a}. Our improvement on TRE brings us closer to the acceptable error bounds of a targeted biopsy system.
+
+In this paper, we used a linear, homogeneous material to create the prostate FEM. However for most soft tissue, some degree viscoleastic, poroelastic, anisotropic and nonlinear response is expected when a mechanical force is applied. If the nonlinear response is significant, non-linear models, such as Mooney-Rivlin, can easily be included by linearizing about the current deformation state and updating the stiffness matrix at each iteration. This will introduce an additional synthetic force to be added to the objective function that encodes the current state.  As for the tissue elastic modulus, the registration is most sensitive to the estimate of the Young's modulus of the prostate. Currently, elastography is not part of a prostate biopsy protocol. However, if additional information about the elastic properties of the tissue is available, this information can be added into our framework through the stiffness matrix, which could potentially improve the registration results.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure*}
+	\centering
+	\subfloat[][Regularization weight\label{fig:exp4weight}]{\includegraphics[width=0.49\textwidth]{EffectOfRegularization}}
+	\subfloat[][Poisson's ratio\label{fig:exp4Poisson}]{\includegraphics[width=0.49\textwidth]{EffectOfPoisson}}\\
+	\subfloat[][Left to right: Spatial distribution of robustness when regularization weight is changed to 0.05, 0.5 and 1.0, respectively.\label{fig:exp4hist1}]{\includegraphics[width=0.49\textwidth]{RobustnessWeight}}\hfill
+	\subfloat[][Left to right: Spatial distribution of robustness when Poisson's ratio is changed to 0.40, 0.45 and 0.499, respectively.\label{fig:exp4hist2}]{\includegraphics[width=0.49\textwidth]{Robustness_PoissonRatio}}
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/EffectOfRegularization.png}
+    %   \caption{Regularization weight}
+    %   \label{fig:exp4weight}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/EffectOfPoisson.png}
+    %   \caption{Poisson's ratio}
+    %   \label{fig:exp4Poisson}
+    % \end{subfigure}
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/RobustnessWeight.png}
+    %   \caption{Left to right: Spatial distribution of robustness when regularization weight is changed to 0.05, 0.5 and 1.0, respectively.}
+    %   \label{fig:exp4hist1}
+    % \end{subfigure}
+    % \hfill
+    % \begin{subfigure}[b]{0.49\textwidth}
+    %   \includegraphics[width=\textwidth]{images/Robustness_PoissonRatio.png}
+    %   \caption{Left to right: Spatial distribution of robustness when Poisson's ratio is changed to 0.40, 0.45 and 0.499, respectively.}
+    %   \label{fig:exp4hist2}
+    % \end{subfigure}
+    \caption{Robustness of GMM-FEM registration for different regularization weights (a) and Poisson's ratios (b). Biomechanical parameters are perturbed around parameters which provided the best surface overlap ($E=5.0$~kPa, $\nu=0.49$ and $\beta=0.1$). \label{fig:exp4fig1}}
+\end{figure*}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\appendices
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{}\label{ap:FEM}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+For a static FEM that encapsulates a region $\Omega$, the stiffness matrix is derived by minimizing the total energy of the model:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:FEMst}
+  E(\Omega) = \int_\Omega W(x)dx
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $W=\sigma^T\epsilon$ is the elastic energy of a linear material. $\sigma$, $\epsilon$ represents the stress and strain, respectively. If external body forces, $f(.)$ and Dirichlet boundary conditions, $b(.)$, are present, additional terms are added to Equation~\eqref{eq:FEMst}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{eqnarray} \label{eq:FEMen}
+  E(\Omega) = \int_\Omega \sigma^T(x)\epsilon(x) dx + \int_\Omega u^T(x)f(x)dx\nonumber\\
+  \text{subject to } \left.u(x)\right|_{\partial \Omega} = b(x),
+\end{eqnarray}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $u(.)$ is the displacement over the volume. In finite element analysis (FEA), displacements are discretized over the volume as
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{equation} \label{eq:FEMdisc}
+  u(x) = \sum_{i=0}^N\phi_i(x)u_i
+\end{equation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where the shape functions $\{\phi_i\}$ form a partition over the space
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+ \sum_{i=0}^N\phi_i(x) = 1, \quad \forall x\in\Omega.
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+The set $\{u_i\}$ describes the degrees of freedom for the given FEM. Each distinct region where a set of the shape functions overlap is called an element. Furthermore, the shape functions are typically defined at a set of points $\{x_i\}$ such that
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \phi_k(x_j)& =  \begin{cases}
+		    1, & j=k\\
+		    0, & j\neq k
+		  \end{cases}.
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+These $\{x_i\}$ points are referred to as nodes. In such a case, we have $u(x_i)=u_i$ and $\{u_i\}$ are the displacements at the nodes. Substituting equation \eqref{eq:FEMdisc} into an expression for strain, we can write
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \epsilon(x) & = \sum_{i=1}^N B_i(x) u_i,\\
+  B_i & = \begin{bmatrix}
+	  \di{\phi_i}{x_1} & 0 & 0\\
+	  0 & \di{\phi_i}{x_2} & 0\\
+	  0 & 0 & \di{\phi_i}{x_3}\\
+	  \di{\phi_i}{x_2} & \di{\phi_i}{x_1} & 0\\
+	  \di{\phi_i}{x_3} & 0 & \di{\phi_i}{x_1}\\
+	  0 & \di{\phi_i}{x_3} & \di{\phi_i}{x_2}
+        \end{bmatrix}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+For a linear FEM, the stress-strain relationship is written as
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  \sigma(x) & = D\epsilon(x),\\
+  D & = \begin{bmatrix}
+	  \lambda +2\mu & \lambda & \lambda  & 0 & 0 & 0\\
+	  \lambda &  \lambda +2\mu & \lambda & 0 & 0 & 0\\
+	  \lambda & \lambda & \lambda +2\mu & 0 & 0 & 0\\
+	  0 & 0 & 0 & \mu & 0 & 0\\
+	  0 & 0 & 0 & 0 & \mu & 0\\
+	  0 & 0 & 0 & 0 & 0 & \mu
+        \end{bmatrix}\label{eq:material}\\
+  \lambda & = \dfrac{E\nu}{(1+\nu)(1-2\nu)} \notag\\
+  \mu & = \dfrac{E}{2(1+\nu)}, \notag
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+where $E$ is the Young's Modulus, and $\nu$ is Poisson's ratio. Substituting all these expressions into Equation~\eqref{eq:FEMen}, we arrive at the system:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align} \label{eq:discreteenergy}
+   E(\Omega) & = \sum_{i=1}^N\sum_{j=1}^N u_j^T \left[\int_\Omega B_j^TDB_i dx\right]\, u_i \notag\\
+   &+ \int_\Omega \phi_i(x)f^T(x) dx\,u_i.
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+These integrals are in terms of the absolute coordinate system, and, as a result, describe the deformed state of the object. In general, expressions for the deformed shape functions, $\phi_i$, are not available. Therefor, it is common practice to do a change of variables so integration can be performed over the rest shape. This introduces a Jacobian, $\di{x}{X}$, into Equation~\eqref{eq:discreteenergy} such that
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+  E(\Omega) & = \sum_{i=1}^N\sum_{j=1}^N u_j^T \left[\int_{\Omega_0} B_j^TDB_i \left|\di{x}{X}\right| dX\right]\, u_i \notag\\
+  & + \int_{\Omega_0} \phi_i(X)f(X) \left|\di{x}{X}\right|dX\,u_i.
+  \label{eq:strainenergy}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This yields the following stiffness matrix when the elastic energy is minimized
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{align}
+ K_{i,j} & = \left[\int_{\Omega_0} B_j^TDB_i \left|\di{x}{X}\right| dX\right], \label{eq:stiffness}
+\end{align}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+which depends on the current deformed state due to the Jacobian term. Thus, the stiffness matrix evolves over time in a dynamic simulation. Under the assumption of small deformations, the approximation of $\left|\di{x}{X}\right|\approx I$ would yield a fixed stiffness matrix. For a more in-depth discussion, see~\cite{Bonet00a}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ifCLASSOPTIONcaptionsoff
+  \newpage
+\fi
+
+\bibliography{tmi}
+\bibliographystyle{plain}
+
+\end{document}

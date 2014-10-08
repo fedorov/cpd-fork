@@ -1,0 +1,18 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+
+PROJECT(TetGen)
+
+SET (TetGen_SRCS
+	predicates.cxx
+	tetgen.cxx
+	)
+
+SET (TetGen_HDRS
+	tetgen.h
+	)
+
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
+
+ADD_EXECUTABLE( tetgen ${TetGen_SRCS} ${TetGen_HDRS})
+ADD_LIBRARY( tetlib ${TetGen_SRCS} ${TetGen_HDRS})

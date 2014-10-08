@@ -1,0 +1,31 @@
+Directory
+\\smbhome\rcl\shared\images\ProstateRobarts
+
+Patient directory prefix
+P
+
+Registered MR directory suffix 
+_DFD
+
+Folders
+20
+068
+069
+070
+075
+077
+078
+087
+089
+090
+091
+092
+093
+094
+099
+100
+101
+104
+105
+107
+108

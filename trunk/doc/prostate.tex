@@ -1,0 +1,573 @@
+\documentclass[10pt]{article}
+
+\usepackage{amsmath}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage[boxed]{algorithm2e}
+\usepackage{xcolor}
+
+\usepackage[framemethod=TikZ]{mdframed}
+
+\newcounter{pnote}
+\newenvironment{aside}[0]
+  {\addtocounter{pnote}{1}
+    \begin{center}
+    \mdfsetup{tikzsetting={draw=black,dashed,line width=1pt,dash pattern = on 5pt off 3pt},linecolor=white,outerlinewidth=1pt}
+    \begin{mdframed}
+    \noindent \textsc{Aside}\#\arabic{pnote}:\newline}
+  {\end{mdframed}\end{center}}
+
+\title{A Biomechanically Constrained Point Drift Algorithm \\ {\large Notes and Modifications}}
+\author{Siavash Khallaghi, C.~Antonio S\'anchez}
+
+\newcommand{\di}[2]{\frac{\partial#1}{\partial#2}}
+\newcommand{\trans}[1]{#1^{T}}
+\newcommand{\trace}{\mathrm{tr}}
+\newcommand{\diag}{\mathrm{diag}}
+\newcommand{\kron}{\mathrm{kron}}
+
+\newcommand{\uvec}{\bm{u}}
+\newcommand{\xvec}{\bm{x}}
+\newcommand{\yvec}{\bm{y}}
+\newcommand{\vvec}{\bm{v}}
+
+\begin{document}
+ 
+\maketitle
+
+\section{Introduction}
+I would change this sentence:
+\begin{quotation}
+  ``Our experience shows significant change in prostate shape during such freehand scan-
+ning, well beyond [the 10\% that] has been observed...'' 
+\end{quotation}
+For what follows regarding approximations in the stiffness matrix, we actually want 
+evidence that the deformations are relatively small.  Maybe you can call the observed large
+difference in shape as the ``apparent'' deformation, which is a combination of prostate 
+motion, deformation, and the difficulties in reconstructing a 3D volume from 2D slices
+taken over a finite period of time.
+
+Following up with this statement:
+\begin{quotation}
+  I chose the group-wise point set SSM generation model by Rasoulian et al. [7] because of
+  ...
+\end{quotation}
+From what I took from the paper, I would say the group-wise method was specifically designed 
+for situations where we either don't know or don't have explicit point correspondences between
+samples in the training data for the SSM.  If this is the case for your training data, 
+which I believe is the case, then this is a very good reason to use this method.
+For instance, if each training shape is just a point cloud on the surface of interest, then 
+the points in one set will not in general correspond to points in another set.  The only
+time we do have known correspondences is if the points in the data set correspond to known
+features, or if they come from some type of tagged dynamic imaging on a single subject and we can
+deduce which tags match between frames.  Otherwise, we need to estimate correspondences, either
+by ICP, or the group-wise method uses a generalized from of CPD which will better handle
+noise, outliers, and missing data.
+
+
+\section{Method}
+
+\setcounter{subsection}{-1} %decrease for added section
+\subsection{A Note about FEM and Stiffness Matrices}
+
+For static FEM, stiffness matrices are derived by minimizing the total energy of a model:
+\begin{align}
+  E(\Omega) & = \int_\Omega W(x) dx,
+\end{align}
+where $W=\sigma^T\epsilon$ represents the elastic energy for linear materials.  If there are
+external body forces and dirichlet (fixed) boundary conditions, then you want to minimize
+\begin{align}
+  E(\Omega) & = \int_\Omega \sigma^T(x)\epsilon(x) dx + \int_\Omega u^T(x)f(x) dx, \label{eq:energy}\\
+  \text{subject to } \left.u(x)\right|_{\partial \Omega} & = b(x)\notag
+\end{align}
+In FEM, we discretize the displacement over the volume as
+\begin{align}
+  u(x) &= \sum_{i=0}^N\phi_i(x)u_i, \label{eq:discretize}
+\end{align}
+where the shape functions $\{\phi_i\}$ form some partition of unity over the space:
+\begin{align}
+ \sum_{i=0}^N\phi_i(x) = 1, \quad \forall x\in\Omega.
+\end{align}
+The set $\{u_i\}$ are
+the degrees of freedom in the model.  Each distinct region where a set of the shape functions overlap 
+is called an \emph{element}.  Furthermore, the shape functions are typically defined such at a set of points 
+point $\{x_i\}$,
+\begin{align}
+  \phi_k(x_j)& =  \begin{cases}
+		    1, & j=k\\
+		    0, & j\neq k
+		  \end{cases}
+\end{align}
+We call these points $\{x_i\}$ \emph{nodes}.  In such a case, we have $u(x_i)=u_i$, so it turns out 
+that $\{u_i\}$ are the displacements at the nodes. 
+
+Substituting equation \eqref{eq:discretize} into an expression for strain, we can write
+\begin{align}
+  \epsilon(x) & = \sum_{i=1}^N B_i(x) u_i,\\
+  B_i & = \begin{bmatrix}
+	  \di{\phi_i}{x_1} & 0 & 0\\
+	  0 & \di{\phi_i}{x_2} & 0\\
+	  0 & 0 & \di{\phi_i}{x_3}\\
+	  \di{\phi_i}{x_2} & \di{\phi_i}{x_1} & 0\\
+	  \di{\phi_i}{x_3} & 0 & \di{\phi_i}{x_1}\\
+	  0 & \di{\phi_i}{x_3} & \di{\phi_i}{x_2}
+        \end{bmatrix}
+\end{align}
+Important note: here we are using the expression for strain, following \cite{bonet:2000:fem}:
+\begin{align}
+  \epsilon^T(x) & = \begin{bmatrix}
+                   \di{u_1}{x_1}, &  \di{u_2}{x_2}, & \di{u_3}{x_3}, 
+                   & \di{u_1}{x_2}+\di{u_2}{x_1}, & \di{u_1}{x_3}+\di{u_3}{x_1}, 
+                   & \di{u_2}{x_3}+\di{u_3}{x_2}
+                  \end{bmatrix} \notag
+\end{align}
+In some texts, the first three terms have a factor of 2 included.  This is compensated
+for in the stress-strain relationship.  Also, this expression for strain
+is only valid for small linear-strains.  It breaks down for large strains or rotations.
+
+For linear FEM, there is a linear stress-strain relationship assumed:
+\begin{align}
+  \sigma(x) & = D\epsilon(x),\\
+  D & = \begin{bmatrix}
+	  \lambda +2\mu & \lambda & \lambda  & 0 & 0 & 0\\
+	  \lambda &  \lambda +2\mu & \lambda & 0 & 0 & 0\\
+	  \lambda & \lambda & \lambda +2\mu & 0 & 0 & 0\\
+	  0 & 0 & 0 & \mu & 0 & 0\\
+	  0 & 0 & 0 & 0 & \mu & 0\\
+	  0 & 0 & 0 & 0 & 0 & \mu
+        \end{bmatrix}\\
+  \lambda & = \dfrac{E\nu}{(1+\nu)(1-2\nu)} \notag\\
+  \mu & = \dfrac{E}{2(1+\nu)}, \notag
+\end{align}
+where $E$ is the Young's Modulus, and $\nu$ is Poisson's ratio.  Substituting
+all these expressions into Equation \eqref{eq:energy}, we arrive at the system:
+\begin{align}
+   E(\Omega) & = \sum_{i=1}^N\sum_{j=1}^N u_j^T \left[\int_\Omega B_j^TDB_i dx\right]\, u_i + \int_\Omega \phi_i(x)f^T(x) dx\,u_i. \label{eq:discreteenergy}
+\end{align}
+Equation \eqref{eq:discreteenergy} can be compared to Equation (3) of Marami \textit{et al.}~\cite{marami:2011:femreg}, noting a few things.
+\begin{itemize}
+  \item By $E(u_i)$, they are really defining:
+  \begin{align}
+    E_i(u_i) & = \sum_{j=1}^N u_j^T \left[\int_\Omega B_j^TDB_i dx\right]\, u_i + \int_\Omega \phi_i(x)f^T(x) dx\,u_i,
+  \end{align}
+  so that $E=\sum_i E_i$. They aren't really evaluating the energy at a single point.  
+  \item  The superscript $el$ is indicating that they are restricting themselves to a single element at a time.
+  \item For tetrahedral elements and a given node $u_i$, the shape function $\phi_i$ only overlaps with
+  four other shape functions, hence $j=1\ldots4$.
+  \item They define $f_i(x)$ to be $\phi_i(x)f(x)$
+  \item These are scalar functions, so I've switched the transposes so that $u_i$ appears at the end.
+\end{itemize}
+Important note: these integrals are in terms of the absolute coordinate system, so are over the deformed state of the object.  
+In general, we do not have expressions for the deformed shape functions, $\phi_i$.  We must do a change of variables so we
+can integrate over the `rest shape'.  This introduces a Jacobian:
+\begin{align}
+  E(\Omega) & = \sum_{i=1}^N\sum_{j=1}^N u_j^T \left[\int_{\Omega_0} B_j^TDB_i \left|\di{x}{X}\right| dX\right]\, u_i + \int_{\Omega_0} \phi_i(X)f(X) \left|\di{x}{X}\right|dX\,u_i.
+  \label{eq:strainenergy}
+\end{align}
+When attempting to minimize energy, the stiffness matrix becomes:
+\begin{align}
+ K_{i,j} & = \left[\int_{\Omega_0} B_j^TDB_i \left|\di{x}{X}\right| dX\right], \label{eq:stiffness}
+\end{align}
+which depends on the current \emph{deformed} state because of the Jacobian term.  Thus, the stiffness matrix evolves over time in 
+a dynamic simulation.  If we \emph{again} assume small deformation, we might approximate $\left|\di{x}{X}\right|\approx I$, which would
+give a fixed stiffness matrix.
+
+For a more in-depth discussion of FEM, see \cite{bonet:2000:fem}.
+ 
+\subsection{General Framework}
+
+We use the following notation:
+\smallskip
+
+\noindent\begin{tabular}{lp{0.7\textwidth}}
+  \hline
+  $D$ & dimension of the point sets\\
+  $N, M$ & number of points in the target \emph{surface geometry} and SSM, respectively\\
+  $X_{N\times D}$ & $(x_1,\ldots,x_N)^T$, the tracked 2D-TRUS segmented points\\
+  $Z_{M\times D}$ & $(z_1,\ldots,z_M)^T$, the GMM centroids for the mean shape of the SSM\\
+  $Y_{M\times D}$ & $(y_1,\ldots,y_M)^T$, the GMM centroids of an \emph{instance} of the SSM\\
+  $\Psi$ & matrix of deformation modes, such that $Y=Z+\Psi b$\\
+  $V_{M\times D}$ & $(v_1,\ldots,v_M)^T$, the \emph{deformed} portion of the displacement of the \emph{instance} shape\\
+  $T(Z,\theta)$ & the transform applied to $Z$, where $\theta$ is a set of transformation parameters\\
+  \hline
+  $J$ & the number of FEM nodes used to regularize the displacement field\\
+  $P_{J\times D}$ & $(p_1,\ldots,p_J)^T$, the FEM node locations\\
+  $\Phi$ & the linear interpolation matrix used to embed the SMM instance $Y$ in the FEM model\\
+  \hline
+  $\xvec_{DN\times 1}$ & $(\trans{x}_1,\ldots,\trans{x}_N)^T$\\
+  $\yvec$ & $(\trans{y}_1,\ldots,\trans{y}_N)^T$\\
+  $\uvec$ & $(\trans{u}_1,\ldots,\trans{u}_N)^T$\\
+  $\vvec$ & $(\trans{v}_1,\ldots,\trans{v}_N)^T$\\
+\end{tabular}
+
+$\vdots$
+
+The transformation can be written as a chain:
+\begin{align}
+  T(Z,\theta) = T_\mathrm{rigid}\left(T_\mathrm{fem}\left(T_\mathrm{ssm}(Z)\right)\right)
+\end{align}
+where $T_\mathrm{ssm}(\cdot)$ denotes the transformation from the mean shape to an instance shape ($Z\to Y$) using a linear
+combination of SSM modes. $T_\mathrm{fem}$ is the deformation of the instance shape.  $T_\mathrm{rigid}$ is the rigid transform,
+consisting of a rotation followed by a translation.
+
+Note: it is important to have the deformation inside the rigid transform so that the global translation and rotation are removed.  Otherwise, the small
+strain assumption will break down.  It also conceptually makes more sense, since you can imagine the prostate deforming
+independent of its current global location.  The deformation is then part of its `shape'.
+
+Following the derivation for CPD \cite{myronenko:2010:cpd}, we can write an objective function
+\begin{align}
+ Q(R,t,b,V) & = \dfrac{1}{2\sigma^2}\sum_{m,n=1}^{M,N} P(z_m|x_n)\|x_n-R(z_m+b\Psi_m+v_m)- t\|^2 \notag\\ 
+  & \qquad + \dfrac{N_PD}{2}\log(\sigma^2) + \mathrm{Reg}(b,V),
+\end{align}
+where $N_P=\sum_{m,n=1}^{M,N}P(z_m|x_n)$.  The regularization term on shape parameters and deformation can be decoupled:
+\begin{align}
+  \mathrm{Reg}(b,V) & = \dfrac{\mu}{2}b^T\Lambda b + \dfrac{\lambda}{2}\mathrm{Reg}(V).
+\end{align}
+
+\subsection{Proposed Solution}
+
+\begin{algorithm}[H]
+ \SetAlgoLined
+ \KwData{Require $Z$, $\Psi$, $X$}
+ Initialize: $R$, $t$, $b$, $v$\;
+ \While{not converged}{
+  Rigid registration betwen $X$ and $Y+V$\;
+  Update $R$, $t$\;
+  Shape registration between $X$ and $R(Z+b\Psi+V)+t$\;
+  Update $b$ which updates $Y$\;
+  Deformable registration between $X$ and $R(Y+V)+t$\;
+  Update $V$\;
+ }
+ \caption{Pseudo code representation of registration framework \label{alg:registration}}
+\end{algorithm}
+
+\subsection{Biomechanically Constrained Non-rigid Registration}
+
+Following Algorithm \ref{alg:registration} and ignoring the terms that do not depend on $V$, we
+can re-write the objective function as:
+\begin{align}
+  Q(V) & = \dfrac{1}{2\sigma^2}\sum_{m,n=1}^{M,N}\left\|x_n - R\left(y_m+v_m\right)-t\right\|^2 + \mathrm{Reg}(V).
+\end{align}
+In order to regularize the displacement parameters, $V$, we follow \cite{marami:2011:femreg} and introduce a finite element framework.
+Until now, we have only dealt with surface shape data.  The SSMs are defined based on segmented surface, not the interior.  Thus, 
+we need to embed this surface into a finite element model.  There are three options for this:
+\begin{enumerate}
+ \item Create a volumetric mesh from the surface mesh \emph{without} introducing additional nodes in the interior. \label{itm:without}
+ \item Create a volumetric mesh from the surface mesh \emph{with} added nodes in the interior.  \label{itm:with}
+ \item Create a volumetric mesh that encapsulates the surface mesh, and couple the two using the FEM interpolation field. \label{itm:embedded}
+\end{enumerate}
+With method \#\ref{itm:without}, the number of FEM nodes will equal the number of vertices of the surface mesh/SSM model, with a one-to-one mapping:
+\begin{align}
+  Y = I P,
+\end{align}
+where $P=(p_1,\ldots,p_M)^T$ are the FEM node locations at rest, and $Y$ are the SSM instance vertex locations, and $I$ is the identity matrix.  
+However, it is not always possible to triangulate a polyhedron without adding additional vertices \cite{schonhardt:1928:tet,toussaint:1993:tetrahedralization}.  
+Futhermore, the elements will be poorly conditioned (highly skewed, elongated), which affects their accuracy and stability.
+
+With method \#\ref{itm:with}, we can automatically generate a well-conditioned tetrahedral mesh of the prostate using Delauney Triangulation 
+\cite{si:2008:tetgen}. Each vertex in the original surface mesh will correspond to an FEM node, but there will be additional nodes
+added to the interior of the shape:
+\begin{align}
+  Y = \begin{bmatrix}
+	I_{M\times M} & 0
+      \end{bmatrix} P,
+\end{align}
+where $P$ now has size $J>M$.  Note that in this case, we \emph{cannot} recover node locations by only knowing the surface vertex positions.
+
+For method \#\ref{itm:embedded}, no direct link between node location and SSM vertex is required.  Start by distributing nodes in such a way
+that the corresponding finite element model encapsulates all SSM vertex locations.  One way this can be accomplished is to determine a bounding
+box for the surface in question, then distribute a regular grid of FEM nodes to create a basic hexahedral encapsulating model.  The space
+can then be discretized based on the nodes:
+\begin{align}
+  x(X) & = \sum_{i=1}^J \phi_i(X)p_i,
+\end{align}
+where $X$ is the reference position in space.  This lets us write the SSM instance in terms of node positions as:
+\begin{align}
+  y_m & = x(y_m) = \sum_{i=1}^J \phi_i(y_m)p_i.
+\end{align}
+Writing this in matrix notation, we have:
+\begin{align}
+ Y & = \Phi P, \label{eq:interpolation}
+\end{align}
+where $\Phi$ is an $M\times J$ interpolation matrix.  Note that both previous methods are also captured
+in this framework by taking $\Phi=I$ and $\Phi=[I\;0]$ respectively.  When the FEM model deforms, each node is displaced by
+some amount:
+\begin{align}
+  p_i & = p_{i,0} + u_i,
+\end{align}
+where $p_i{i,0}$ is the rest position of node $i$.  We can then recover the deformed SSM shape as:
+\begin{align}
+  (Y+V) & = \Phi(P_0+U), \notag \\
+  \quad \implies V & = \Phi U, \label{eq:uV}
+\end{align}
+where $U=(u_1,\ldots,u_J)^T$ are displacements of the FEM nodes.  Note that for this method, every time the SSM is updated,
+we have to recompute $\Phi$ to reflect the new undeformed state.
+
+In \cite{marami:2011:femreg}, Marami \textit{et al.} use the FEM elastic energy as a regularization term in their
+objective function:
+\begin{align}
+   \mathrm{Reg}(V) & = \dfrac{\lambda}{2}\trans{\uvec}K\uvec,
+\end{align}
+where $K$ is the global stiffness matrix.  In our case, however, there is this distinction between FEM nodes and vertex locations, 
+given by the relationship in Equation \eqref{eq:interpolation}.
+
+\subsubsection{Equivalent Stiffness Matrix}
+
+We can re-write the energy function in Equation \eqref{eq:discreteenergy} as:
+\begin{align}
+  E(\Omega) & = \sum_{i=1}^N\sum_{j=1}^N u_j^T K_{i,j}\, u_i + f_i^T\,u_i \notag\\
+  & = \sum_{j=1}^N u_j^T K_j \uvec + f^T \uvec, \notag\\
+  & = \uvec^TK\uvec + f^T\uvec, \label{eq:matrixenergy}
+\end{align}
+where $K$ is the global stiffness matrix.
+
+If we could create an `equivalent' stiffness matrix that only included vertex locations, we could then follow the same procedure as Marami 
+\textit{et al.}~\cite{marami:2011:femreg}. To do so, we must replace each instance of $u$ in Equation \eqref{eq:matrixenergy} with an 
+expression involving only $V$.  For the moment, let us assume that we can solve the system in Equation \eqref{eq:uV} for $U$ in terms of 
+$V$, at least in a least-squares sense:
+\begin{align}
+  U = (\Phi^T\Phi)^{-1}\Phi^T V.
+\end{align}
+Substituting this back into Equation \eqref{eq:matrixenergy}, we have:
+\begin{align}
+  E(\Omega) & = V^T\Phi(\Phi^T\Phi)^{-1} K (\Phi^T\Phi)^{-1}\Phi^T V + f^T (\Phi^T\Phi)^{-1}\Phi^T V.
+\end{align}
+Thus, the `equivalent' stiffness matrix is given by 
+\begin{align}
+  K_V & = \Phi(\Phi^T\Phi)^{-1} K (\Phi^T\Phi)^{-1}\Phi^T.
+\end{align}
+
+Unfortunately, the matrix $\Phi^T\Phi$ will not in general be invertible.  For example, taking Method \#\ref{itm:with}, we have
+\begin{align}
+  \Phi^T\Phi & = \begin{bmatrix}
+                  I_{M\times M} & 0\\
+                  0 & 0
+                 \end{bmatrix}
+\end{align}
+It turns out there will be many such cases. If ever there are more nodes than vertices, or elements that contain no point of $Y$,
+then $\Phi^T\Phi$ will not be invertible.  One option may be to simply take the pseudo-inverse, however this seems less than ideal.
+
+\subsubsection{Mixed Formulation}
+
+In general, neither $\Phi$ nor $\Phi^T\Phi$ will be invertible, so we cannot recover node positions knowing only the SSM instance.
+Thus, we need to introduce the FEM nodes as additional degrees of freedom in our optimization.  They are treated as parameters of
+the deformable transform.  Deformation is regularized by minimizing strain energy of the FEM node positions.  These positions
+are then also coupled to the SSM vertices through the interpolation given in Equation \eqref{eq:uV}:
+\begin{align}
+  Q(U,V,s, R,t) & = \dfrac{1}{2\sigma^2}\sum_{m,n=1}^{M,N}P(y_m|x_n)\left\|x_n- R\left(y_m+v_m\right)-t\right\|^2 \notag\\
+  & \qquad + \dfrac{N_PD}{2}\log(\sigma^2) + \mathrm{Reg}(U,V)\\
+  \mathrm{Reg}(U,V) & = \dfrac{\alpha}{2}\sum_{i=1}^M\|\trans{v}_i-\Phi_iU\|^2 + \dfrac{\beta}{2}\trans{\uvec}K\uvec
+\end{align}
+where $\Phi_i$ is the $i$th row of matrix $\Phi$. The first term in 
+$\mathrm{Reg}(U,V)$ couples node displacements to SSM vertex displacements.  The scaling factor $\alpha$ should be
+relatively large to enforce this condition.  The second term minimizes elastic energy of the nodes, favouring smaller or no 
+displacements when there are additional degrees of freedom.  Through some careful manipulation, we can rewrite the above in matrix
+form as
+\begin{align}
+    Q(U,V,s, R,t) & = \dfrac{1}{2\sigma^2}\left[N_P\trans{t}t + \trace\left(\trans{X}\diag\left(\trans{P}1\right)X\right)-2\trans{t}\trans{X}\trans{P}1\right.\notag\\
+    & \qquad +s^2\;\trace\left(\trans{(Y+V)}\diag\left(P1\right)(Y+V)\right) + 2s\;\trans{t}R\trans{(Y+V)}P1\notag\\
+    & \qquad \left.-2s\;\trace\left(\trans{X}\trans{P}(Y+V)\trans{R}\right)\right]+\dfrac{N_PD}{2}\log(\sigma^2)\notag\\
+    & \qquad + \dfrac{\alpha}{2}\sum_{i=1}^M\|\trans{v}_i-\Phi_iU\|^2 + \dfrac{\beta}{2}\trans{\uvec}K\uvec
+\end{align}
+To deal with the fact that $u$ is $3J\times1$, and the the stiffness matrix $K$ involves coupling between the 
+$(x,y,z)$-coordinates we re-express the system in terms of rasterized vectors:
+\begin{align}
+    Q(\uvec,\vvec,s, R,t) & = \dfrac{1}{2\sigma^2}\left[N_P\trans{t}t + \trans{\xvec}\diag\left(\trans{\tilde{P}}1\right)\xvec-2\trans{t}\trans{\hat{I}}\diag\left(\trans{\tilde{P}}1\right)\xvec\right.\notag\\
+    & \qquad\qquad + s^2\;\trans{(\yvec+\vvec)}\diag\left(\tilde{P}1\right)(\yvec+\vvec)\notag\\
+    & \qquad\qquad \left. +2s\;\trans{t}R\trans{\tilde{I}}\diag\left(\tilde{P}1\right)(\yvec+\vvec) -2s\;\trans{\xvec}\trans{\tilde{P}}\tilde{R}(\yvec+\vvec)\right]\notag\\
+    & \quad +\dfrac{N_PD}{2}\log(\sigma^2)\notag\\
+    & \quad + \dfrac{\alpha}{2}\left[\trans{\vvec}\vvec -2\trans{\vvec}\tilde{\Phi}\uvec + \trans{\uvec}\trans{\Phi}\Phi \uvec\right] + \dfrac{\beta}{2}\trans{\uvec}K\uvec \label{eq:Qvector}
+\end{align} 
+where
+\begin{align*}
+    \tilde{P} & = \kron(P,I_{3\times3}) = \begin{bmatrix}
+                      P_{0,0}I_{3\times3} & P_{0,1}I_{3\times3} & \cdots & P_{0,N}I_{3\times3}\\
+                      P_{1,0}I_{3\times3} & P_{1,1}I_{3\times3} & \cdots & P_{1,N}I_{3\times3}\\
+                      \vdots & \vdots & \ddots & \vdots\\
+                      P_{M,0}I_{3\times3} & P_{M,1}I_{3\times3} & \cdots & P_{M,N}I_{3\times3}\\
+                  \end{bmatrix}_{3M\times3N}\\
+    \tilde{\Phi} & = \kron(\Phi,I_{3\times3})\\
+    \tilde{R} & = \kron(R, I_{M\times M})\\
+    \trans{\hat{I}} & = \begin{bmatrix}
+                    I_{3\times3} & \cdots & I_{3\times3}
+                \end{bmatrix}_{3\times 3N}\\
+    \trans{\tilde{I}} & = \begin{bmatrix}
+                    I_{3\times3} & \cdots & I_{3\times3}
+                \end{bmatrix}_{3\times 3M}
+\end{align*}
+
+\subsubsection*{Minimization for \texorpdfstring{$U$ and $V$}{U and V}}
+
+Assume we know $(X, Y, \Phi, s, R, t)$.  We want to solve Equation \eqref{eq:Qvector} for the minimizing $U$ and $V$, 
+or equivalently for $\uvec$ and $\vvec$.  First, let's remove all constant terms:
+\begin{align}
+    Q(\uvec,\vvec) & = \dfrac{s^2}{2\sigma^2}\trans{\vvec}\diag\left(\tilde{P}1\right)\vvec\notag\\
+    & \quad + \dfrac{1}{\sigma^2}\left[\left(s^2\trans{\yvec}+s\;\trans{t}R\trans{\tilde{I}}\right)
+        \diag\left(\tilde{P}1\right)-s\;\trans{\xvec}\trans{\tilde{P}}\tilde{R}\right]\vvec\notag\\
+    & \quad + \dfrac{\alpha}{2}\left[\trans{\vvec}\vvec -2\trans{\vvec}\tilde{\Phi}\uvec + 
+       \trans{\uvec}\trans{\Phi}\Phi \uvec\right] + \dfrac{\beta}{2}\trans{\uvec}K\uvec \label{eq:Quv}\\
+       & = \dfrac{1}{2}
+           \begin{bmatrix}
+               \trans{\uvec} & \trans{\vvec}
+           \end{bmatrix} 
+           \begin{bmatrix}
+               \alpha\trans{\tilde{\Phi}}\tilde{\Phi}+\beta K & -\alpha\trans{\Phi}\\
+               -\alpha\Phi & \frac{s^2}{\sigma^2}\diag\left(\tilde{P}1\right)+\alpha I
+           \end{bmatrix}
+           \begin{bmatrix}
+               \uvec\\
+               \vvec
+           \end{bmatrix} \notag\\
+         & \quad + 
+            \begin{bmatrix}
+                       0 & 
+                       \frac{1}{\sigma^2}\left[\left(s^2\trans{\yvec}+s\;\trans{t}R\trans{\tilde{I}}\right)
+                        \diag\left(\tilde{P}1\right)-s\;\trans{\xvec}\trans{\tilde{P}}\tilde{R}\right]
+            \end{bmatrix}
+            \begin{bmatrix}
+               \uvec\\
+               \vvec
+           \end{bmatrix} \notag\\           
+\end{align}
+Minimizing with respect to $\tilde{\uvec} = [\uvec;\vvec]$:
+\begin{align}
+    \di{Q}{\tilde{\uvec}} & = 
+            \begin{bmatrix}
+               \alpha\trans{\tilde{\Phi}}\tilde{\Phi}+\beta K & -\alpha\trans{\Phi}\\
+               -\alpha\Phi & \frac{s^2}{\sigma^2}\diag\left(\tilde{P}1\right)+\alpha I
+            \end{bmatrix}
+            \begin{bmatrix}
+               \uvec\\
+               \vvec
+           \end{bmatrix}\notag\\
+           & \quad - \begin{bmatrix}
+                       0\\
+                       \frac{-1}{\sigma^2}\left[\diag\left(\tilde{P}1\right)\left(s^2\yvec+s\tilde{I}\trans{R}t\right)
+                        -s\trans{\tilde{R}}\tilde{P}\xvec\right]
+            \end{bmatrix}\notag\\
+    \implies \quad 
+        \begin{bmatrix}
+            \uvec\\
+            \vvec
+        \end{bmatrix} & = 
+            \begin{bmatrix}
+               \alpha\trans{\tilde{\Phi}}\tilde{\Phi}+\beta K & -\alpha\trans{\Phi}\\
+               -\alpha\Phi & \frac{s^2}{\sigma^2}\diag\left(\tilde{P}1\right)+\alpha I
+            \end{bmatrix}^{-1}
+            \begin{bmatrix}
+                       0\\
+                       \frac{-1}{\sigma^2}\left[\diag\left(\tilde{P}1\right)\left(s^2\yvec+s\tilde{I}\trans{R}t\right)
+                        -s\trans{\tilde{R}}\tilde{P}\xvec\right]
+            \end{bmatrix}
+\end{align}
+
+\begin{aside}
+    For comparing with Siavash's work, take $R = I$, $s=1$ and $t=0$,
+\begin{align}
+    \begin{bmatrix}
+        \uvec\\
+        \vvec
+    \end{bmatrix} & = 
+        \begin{bmatrix}
+            \alpha\trans{\tilde{\Phi}}\tilde{\Phi}+\beta K & -\alpha\trans{\Phi}\\
+            -\alpha\Phi & \frac{1}{\sigma^2}\diag\left(\tilde{P}1\right)+\alpha I
+        \end{bmatrix}^{-1}
+        \begin{bmatrix}
+                    0\\
+                    \frac{-1}{\sigma^2}\left[\diag\left(\tilde{P}1\right)\yvec
+                    -\tilde{P}\xvec\right]
+        \end{bmatrix}
+\end{align}
+Re-writing Siavash's answer in matrix form:
+\begin{align}
+    \begin{bmatrix}
+        U\\
+        V
+    \end{bmatrix} & = 
+        \begin{bmatrix}
+            \alpha\diag\left(\trace(\trans{\Phi}\Phi)\right)+\beta K & -\alpha\trans{\Phi}\\
+            -\alpha\Phi & \frac{1}{\sigma^2}\diag\left(\textcolor{red}{\trace}(P1)\right)+\alpha \textcolor{red}{J}I
+        \end{bmatrix}^{-1}
+        \begin{bmatrix}
+                    0\\
+                    \frac{-1}{\sigma^2}\left[\diag\left(\textcolor{red}{\trace}(P1)\right)Y
+                    -PX\right]
+        \end{bmatrix}
+\end{align}
+
+\end{aside}
+
+\subsubsection{Simplified Formulation}
+
+Instead of keeping around both $V$ and $U$, we can simply replace $V$ with 
+the expression in Equation \eqref{eq:uV}.
+\begin{align}
+  Q(U,s, R,t) & = \dfrac{1}{2\sigma^2}\sum_{m,n=1}^{M,N}P(y_m|x_n)\left\|x_n- R\left(y_m+\sum_{i=1}^J\phi_{mj}u_j\right)-t\right\|^2 \notag\\
+  & \qquad + \dfrac{N_PD}{2}\log(\sigma^2) + \mathrm{Reg}(U) \notag\\
+  \mathrm{Reg}(U) & = \dfrac{\beta}{2}\trans{\uvec}K\uvec \notag
+\end{align}
+
+\begin{aside}
+    I don't know if this formulation is limiting.  We \emph{may} have more 
+    flexibility in the mixed formulation, since Equation \eqref{eq:uV}
+    is implemented as a soft-constraint, as opposed to here where it is a hard
+    constraint.  In the end, I'm not sure if it matters, because it turns out
+    that $U$ is also affected by the Gaussian distributions.
+    
+    The advantage of this method is that the matrix system is much smaller,
+    and there is one less parameter.
+\end{aside}
+
+\noindent We can re-write this in matrix form:
+\begin{align}
+    Q(U, s, R,t) & = \dfrac{1}{2\sigma^2}\left[N_P\trans{t}t + \trace\left(\trans{X}\diag\left(\trans{P}1\right)X\right)-2\trans{t}\trans{X}\trans{P}1\right.\notag\\
+    & \qquad +s^2\;\trace\left(\trans{(Y+\Phi U)}\diag\left(P1\right)(Y+\Phi U)\right) \notag\\
+    & \qquad + 2s\;\trans{t}R\trans{(Y+ \Phi U)}P1\notag\\
+    & \qquad \left.-2s\;\trace\left(\trans{X}\trans{P}(Y+\Phi U)\trans{R}\right)\right]+\dfrac{N_PD}{2}\log(\sigma^2)\notag\\
+    & \qquad + \dfrac{\beta}{2}\trans{\uvec}K\uvec,
+\end{align}
+or using vectors,
+\begin{align}
+    Q(\uvec,s, R,t) & = \dfrac{1}{2\sigma^2}\left[N_P\trans{t}t + \trans{\xvec}\diag\left(\trans{\tilde{P}}1\right)\xvec-2\trans{t}\trans{\hat{I}}\diag\left(\trans{\tilde{P}}1\right)\xvec\right.\notag\\
+    & \qquad\qquad + s^2\;\trans{(\yvec+\tilde{\Phi}\uvec)}\diag\left(\tilde{P}1\right)(\yvec+\tilde{\Phi}\uvec)\notag\\
+    & \qquad\qquad +2s\;\trans{t}R\trans{\tilde{I}}\diag\left(\tilde{P}1\right)(\yvec+\tilde{\Phi}\uvec)\notag\\
+    & \qquad\qquad \left.-2s\;\trans{\xvec}\trans{\tilde{P}}\tilde{R}(\yvec+\tilde{\Phi}\uvec)\right]\notag\\
+    & \quad +\dfrac{N_PD}{2}\log(\sigma^2) + \dfrac{\beta}{2}\trans{\uvec}K\uvec \label{eq:QnoV}
+\end{align} 
+
+\subsubsection*{Minimization for \texorpdfstring{$U$}{U}}
+
+Assume we know $(X, Y, \Phi, s, R, t)$.  We want to solve Equation 
+\eqref{eq:QnoV} for the minimizing $\uvec$.  First, let's remove all constant
+terms:
+\begin{align}
+    Q(\uvec) & = \dfrac{s^2}{2\sigma^2}\trans{\uvec}\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\tilde{\Phi}\uvec\notag\\
+    & \quad + \dfrac{1}{\sigma^2}\left[\left(s^2\trans{\yvec}+s\;\trans{t}R\trans{\tilde{I}}\right)
+        \diag\left(\tilde{P}1\right)-s\;\trans{\xvec}\trans{\tilde{P}}\tilde{R}\right]\tilde{\Phi}\uvec\notag\\
+    & \quad + \dfrac{\beta}{2}\trans{\uvec}K\uvec \label{eq:Qu}
+\end{align}
+Differentiating with respect to $\uvec$,
+\begin{align}
+    \di{Q(\uvec)}{\uvec} & = \left[\dfrac{s^2}{\sigma^2}\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\tilde{\Phi} + \beta K\right]\uvec\notag\\
+        & \quad + \dfrac{1}{\sigma^2}\left[\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\left(s^2\yvec+s\tilde{I}\trans{R}t\right)
+        -s\trans{\tilde{\Phi}}\trans{\tilde{R}}\tilde{P}\xvec\right]\\
+    \implies \quad \uvec & = -\left[s^2\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\tilde{\Phi} 
+        + \beta \sigma^2K\right]^{-1}\left[\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\left(s^2\yvec+s\tilde{I}\trans{R}t\right)
+        -s\trans{\tilde{\Phi}}\trans{\tilde{R}}\tilde{P}\xvec\right]
+\end{align}
+
+\begin{aside}
+    Setting $s=1$, $R=I$ and $t=0$,
+    \begin{align}
+        \uvec & = -\left[\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\tilde{\Phi} 
+            + \beta \sigma^2K\right]^{-1}\left[\trans{\tilde{\Phi}}\diag\left(\tilde{P}1\right)\yvec
+            -\trans{\tilde{\Phi}}\tilde{P}\xvec\right]
+    \end{align}
+\end{aside}
+
+
+\bibliographystyle{acm}
+\nocite{*}
+\bibliography{prostate}
+ 
+\end{document}
