@@ -87,6 +87,8 @@ femResultFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_
 save(femResultFilename, 'femResult');
 femSurfaceFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_fem.ply'];
 write_ply(TYfem, moving.faces, femSurfaceFilename);
+meshFileName = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_fem_result_mesh.vtk']
+writeFEMvtk(fem,u,meshFileName,1)
 
 Phi = getInterpolationMatrix(fem, landmarksAffine);
 time=toc; fprintf('FEM interpolation time is %f seconds\n', time);
