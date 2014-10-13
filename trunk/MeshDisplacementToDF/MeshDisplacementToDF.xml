@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Converters</category>
+  <title>MeshDisplacementToDF</title>
+  <description><![CDATA[Generate deformation field based on displacements prescribed at tetrahedral mesh nodes.]]></description>
+  <version>0.0.1</version>
+  <documentation-url></documentation-url>
+  <license>Slicer</license>
+  <contributor>Andriy Fedorov (SPL/BWH)</contributor>
+  <acknowledgements>This work was partially funded by NIH grants ...</acknowledgements>
+  <parameters>
+    <label>IO</label>
+    <description>Input/output parameters</description>
+
+    <image>
+      <name>refImageName</name>
+      <label>Input reference image</label>
+      <channel>input</channel>
+      <description>Reference image that will be used to prescribe deformation field</description>
+      <index>0</index>
+    </image>
+
+    <file>
+      <name>meshName</name>
+      <label>Input mesh</label>
+      <channel>input</channel>
+      <description>Tetrahedral mesh with the displacement field prescribed at mesh points</description>
+      <index>1</index>
+    </file>
+
+    <image>
+      <name>dfImageName</name>
+      <label>Output deformation field</label>
+      <channel>output</channel>
+      <description>Deformation field</description>
+      <index>2</index>
+    </image>
+
+    </parameters>
+</executable>
