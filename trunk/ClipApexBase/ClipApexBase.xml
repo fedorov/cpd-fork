@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Converters</category>
+  <title>ClipModelEnds</title>
+  <description><![CDATA[Clip surface points using 2 planes normal to z axis.]]></description>
+  <version>0.0.1</version>
+  <documentation-url></documentation-url>
+  <license>Slicer</license>
+  <contributor>Andriy Fedorov (SPL/BWH)</contributor>
+  <acknowledgements>This work was partially funded by NIH grants ...</acknowledgements>
+  <parameters>
+    <label>IO</label>
+    <description>Input/output parameters</description>
+
+    <file>
+      <name>refImageName</name>
+      <label>Input reference image</label>
+      <channel>input</channel>
+      <description>Reference segmentation image that will be used to prescribe the cutting planes</description>
+      <index>0</index>
+    </file>
+
+    <file>
+      <name>meshName</name>
+      <label>Input mesh</label>
+      <channel>input</channel>
+      <description>Surface mesh that defines the triangulation of the object in the segmented image</description>
+      <index>1</index>
+    </file>
+
+    <float>
+      <name>offset1</name>
+      <label>Plane offset 1</label>
+      <channel>input</channel>
+      <description>Offset of the first plane to cut the point set</description>
+      <index>2</index>
+    </float>
+
+    <float>
+      <name>offset2</name>
+      <label>Plane offset 2</label>
+      <channel>input</channel>
+      <description>Offset of the second plane to cut the point set</description>
+      <index>3</index>
+    </float>
+
+    <file>
+      <name>outputMeshName</name>
+      <label>Output surface points</label>
+      <channel>output</channel>
+      <description>Surface </description>
+      <index>4</index>
+    </file>
+
+    </parameters>
+</executable>
