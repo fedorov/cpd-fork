@@ -1,8 +1,8 @@
-function [fem,u] = registerBWHcase(caseId)
-clear; clc; close all;
+function [fem,u] = bwh_registration(caseId,usePartialData)
+%clear; clc; close all;
 root = '/Users/fedorov/github/cpd/trunk';
 
-caseId = '10';
+usePartialData = 1;
 
 add_bcpd_paths;
 
@@ -15,12 +15,14 @@ fprintf('Landmarks read:')
 landmarksMR
 landmarksUS
 
-fixedModelName = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '-US-simplified.ply'];
-movingModelName = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '-MR-simplified.ply'];
-registeredPath = [ dataPath '/Case' caseId '/SmoothReg/Models/'];
+fixedModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth.ply'];
+fixedPartialModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth-cut10.ply'];
+movingModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-MR-smooth.ply'];
+registeredPath = [ dataPath '/Case' caseId '/CPD_registration/'];
 
 %% Read in the surfaces
 [fixedVertices,fixedFaces] = read_ply(fixedModelName);
+[fixedPartialVertices,fixedPartialFaces] = read_ply(fixedPartialModelName);
 [movingVertices,movingFaces] = read_ply(movingModelName);
 fprintf('Read input surfaces');
 
@@ -30,6 +32,9 @@ numberOfFaces = 1800;
 
 fixed.faces = fixedFaces;
 fixed.vertices = fixedVertices;
+
+fixedPartial.faces = fixedPartialFaces;
+fixedPartial.vertices = fixedPartialVertices;
 
 moving.faces = movingFaces;
 moving.vertices = movingVertices;
@@ -43,10 +48,15 @@ moving.vertices = movingVertices;
 w=0.00; errtol=1e-4; maxiters=500; sigma2=10;
 beta=0.12; E=4.8; nu=0.49;
 
+% TODO: rigid alignment is not robust with partial data; need to do rigid
+% initialization using full data, and then FEM on partial
+
 tic;
 %[TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(pX.vertices, pY.vertices, pY.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
 %[TYrigidfem, ~, ~, ~, ~, ~, ~, ~] = cpd_rigid_fem(pX.vertices, [], pY.vertices, pY.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu);
-%[TYrigid,~,~,~,~] = cpd_rigid(pX.vertices, pY.vertices, w, errtol, maxiters, [], [], 0, sigma2);
+
+%[TYrigid,B_affine,t_affine,~,~] = cpd_rigid(fixed.vertices, moving.vertices, w, errtol, maxiters, [], [], 0, sigma2);
+
 [TYaffine,B_affine,t_affine,~,~] = cpd_affine(fixed.vertices, moving.vertices, w, errtol, maxiters, [], [], sigma2);
 time=toc; fprintf('Affine registration time is %f seconds\n', time);
 
@@ -64,30 +74,41 @@ landmarksAffine
 affineResult.TY = TYaffine;
 affineResult.B = B_affine;
 affineResult.t = t_affine;
-affineResultFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_affine.mat'];
+affineResultFilename = [ registeredPath '/case' caseId '_affine.mat'];
 save(affineResultFilename, 'affineResult');
-affineSurfaceFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_affine.ply'];
+affineSurfaceFilename = [ registeredPath '/case' caseId '_affine.ply'];
 write_ply(TYaffine, moving.faces, affineSurfaceFilename);
 
-writeBWHlandmarks([ dataPath '/Case' caseId '/SmoothReg/Models/'], caseId, 'affineReg', landmarksAffine);
+writeBWHlandmarks(registeredPath, caseId, 'affineReg', landmarksAffine);
 
 fprintf('Affine results saved');
 
 landmarksAffine
 
 tic;
-[TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixed.vertices, TYaffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
+femType = '';
+if usePartialData
+    femType = 'Partial';
+    fprintf('Registering with partial data:')
+    size(fixedPartial.vertices)
+    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixedPartial.vertices, TYaffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
+else
+    femType = 'Full';
+    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixed.vertices, TYaffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
+end
+
+
 time=toc; fprintf('FEM registration time is %f seconds\n', time);
 
 femResult.TY = TYfem;
 femResult.sigma2 = newSigma2;
 femResult.fem = fem;
 femResult.u = u;
-femResultFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_fem.mat'];
+femResultFilename = [ registeredPath '/case' caseId '_fem_' femType '.mat'];
 save(femResultFilename, 'femResult');
-femSurfaceFilename = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_fem.ply'];
+femSurfaceFilename = [ registeredPath '/case' caseId '_fem_' femType '.ply'];
 write_ply(TYfem, moving.faces, femSurfaceFilename);
-meshFileName = [ dataPath '/Case' caseId '/SmoothReg/Models/case' caseId '_fem_result_mesh.vtk']
+meshFileName = [ registeredPath '/case' caseId '_fem_result_mesh_' femType '.vtk']
 writeFEMvtk(fem,u,meshFileName,1)
 
 Phi = getInterpolationMatrix(fem, landmarksAffine);
@@ -98,7 +119,7 @@ landmarksFEM = landmarksAffine+Phi*u
 
 landmarksUS
 
-writeBWHlandmarks([ dataPath '/Case' caseId '/SmoothReg/Models/'], caseId, 'femReg', landmarksFEM);
+writeBWHlandmarks(registeredPath, caseId, ['femReg_' femType], landmarksFEM);
 
 initial_error = sqrt(sum((landmarksMR-landmarksUS).*(landmarksMR-landmarksUS),2));
 affine_error = sqrt(sum((landmarksAffine-landmarksUS).*(landmarksAffine-landmarksUS),2));
