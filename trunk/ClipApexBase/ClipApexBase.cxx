@@ -1,45 +1,18 @@
-#include <itkImage.h>
-#include <itkImageRegionIteratorWithIndex.h>
-#include <itkImageFileReader.h>
-#include <itkImageFileWriter.h>
-
-#include "itkImageToVTKImageFilter.h"
-#include "itkVTKImageToImageFilter.h"
-#include "itkImageDuplicator.h"
-
 #include <iostream>
 
 #include "vtkPLYReader.h"
 #include "vtkPLYWriter.h"
 #include "vtkPolyData.h"
 #include "vtkDataSet.h"
+#include "vtkSmartPointer.h"
 
 #include "vtkClipPolyData.h"
 #include "vtkPlane.h"
 
 #include <ClipApexBaseCLP.h>
 
-typedef int InputPixelType;
-typedef itk::Vector<float,3> OutputPixelType;
-typedef itk::Image<InputPixelType,3> InputImageType;
-typedef itk::Image<OutputPixelType,3>  OutputImageType;
-typedef itk::ImageFileReader<InputImageType> ReaderType;
-typedef itk::ImageFileWriter<OutputImageType> WriterType;
-typedef itk::ImageFileWriter<InputImageType> MaskWriterType;
-
-typedef itk::ImageToVTKImageFilter<InputImageType> ToVTKConvertType;
-typedef itk::VTKImageToImageFilter<InputImageType> FromVTKConvertType;
-
-typedef itk::ImageDuplicator<InputImageType> DuplicateType;
-
 int main(int argc, char* argv[]){
   PARSE_ARGS;
-
-  // read input image
-  ReaderType::Pointer reader = ReaderType::New();
-  reader->SetFileName(refImageName.c_str());
-  reader->Update();
-  InputImageType::Pointer ref = reader->GetOutput();
 
   // read the input mesh
   vtkSmartPointer<vtkPLYReader> meshReader = 
