@@ -3,6 +3,7 @@ function [fem,u] = bwh_registration(caseId,usePartialData)
 root = '/Users/fedorov/github/cpd/trunk';
 
 usePartialData = 1;
+caseId='9';
 
 add_bcpd_paths;
 
@@ -79,11 +80,16 @@ save(affineResultFilename, 'affineResult');
 affineSurfaceFilename = [ registeredPath '/case' caseId '_affine.ply'];
 write_ply(TYaffine, moving.faces, affineSurfaceFilename);
 
+writeAffineTransform([ registeredPath '/case' caseId '_affine.tfm'], affineResult.B, affineResult.t);
+
 writeBWHlandmarks(registeredPath, caseId, 'affineReg', landmarksAffine);
 
 fprintf('Affine results saved');
 
 landmarksAffine
+
+% estimate of the missing data
+w=0.20;
 
 tic;
 femType = '';
@@ -168,6 +174,41 @@ fprintf(fid,'# columns = id,x,y,z,ow,ox,oy,oz,vis,sel,lock,label,desc,associated
 for i=1:size(L,1)
   fprintf(fid,'vtkMRMLMarkupsFiducialNode_%i,%f,%f,%f,0,0,0,1,1,1,0,%s%i,,',i,L(i,1),L(i,2),L(i,3),name,i);
 end
+
+fclose(fid);
+
+end
+
+function writeAffineTransform(filename, B, t)
+tMatrix = zeros(4);
+tMatrix(1:3,1:3) = B;
+tMatrix(:,4) = [t',1];
+lps2ras = eye(4);
+lps2ras(1,1) = -1;
+lps2ras(2,2) = -1;
+ras2lps = lps2ras;
+tMatrix = inv(lps2ras*tMatrix*ras2lps);
+
+
+fid=fopen(filename, 'w');
+
+fprintf(fid,'#Insight Transform File V1.0\n');
+fprintf(fid,'#Transform 0\n');
+fprintf(fid,'Transform: AffineTransform_double_3_3\n');
+fprintf(fid,'Parameters: ');
+
+for i=1:3
+    for j=1:3
+        fprintf(fid,'%f ',tMatrix(i,j));
+    end
+end
+
+for j=1:3
+    fprintf(fid,'%f ',tMatrix(j,4));
+end
+
+fprintf(fid,'\n');
+fprintf(fid,'FixedParameters: 0 0 0\n');
 
 fclose(fid);
 
