@@ -50,7 +50,7 @@ int main(int argc, char* argv[]){
   meshReader->SetFileName(meshName.c_str());
   meshReader->Update();
   vtkUnstructuredGrid *mesh = meshReader->GetOutput();
-  vtkDataArray *meshDeformation = mesh->GetPointData()->GetArray("Deformation");
+  vtkDataArray *meshDeformation = mesh->GetPointData()->GetArray("displacements");
   if(meshDeformation == NULL){
     std::cerr << "Failed to load deformation" << std::endl;
     return -1;
@@ -63,6 +63,14 @@ int main(int argc, char* argv[]){
   df->SetRegions(ref->GetBufferedRegion());
   df->SetDirection(ref->GetDirection());
   df->Allocate();
+
+  // allocate output inverse image
+  OutputImageType::Pointer dfInverse = OutputImageType::New();
+  dfInverse->SetOrigin(ref->GetOrigin());
+  dfInverse->SetSpacing(ref->GetSpacing());
+  dfInverse->SetRegions(ref->GetBufferedRegion());
+  dfInverse->SetDirection(ref->GetDirection());
+  dfInverse->Allocate();
 
   DuplicateType::Pointer dup = DuplicateType::New();
   dup->SetInputImage(ref);
@@ -188,6 +196,22 @@ int main(int argc, char* argv[]){
       dfPixel[0] = bc[0]*dp0[0]+bc[1]*dp1[0]+bc[2]*dp2[0]+bc[3]*dp3[0];
       dfPixel[1] = bc[0]*dp0[1]+bc[1]*dp1[1]+bc[2]*dp2[1]+bc[3]*dp3[1];
       dfPixel[2] = bc[0]*dp0[2]+bc[1]*dp1[2]+bc[2]*dp2[2]+bc[3]*dp3[2];
+
+      OutputImageType::PixelType dfInverseVector;
+      OutputImageType::PointType dfInversePoint;
+      OutputImageType::IndexType dfInverseIndex;
+
+      df->TransformIndexToPhysicalPoint(imageI.GetIndex(), dfInversePoint);
+      dfInversePoint[0] += dfPixel[0];
+      dfInversePoint[1] += dfPixel[1];
+      dfInversePoint[2] += dfPixel[2];
+
+      dfInverseVector[0] = -1.*dfPixel[0];
+      dfInverseVector[1] = -1.*dfPixel[1];
+      dfInverseVector[2] = -1.*dfPixel[2];
+      df->TransformPhysicalPointToIndex(dfInversePoint, dfInverseIndex);
+
+      dfInverse->SetPixel(dfInverseIndex, dfInverseVector);
       
       dfImageI.Set(dfPixel);
       mask->SetPixel(imageI.GetIndex(), 1);
@@ -196,11 +220,21 @@ int main(int argc, char* argv[]){
 
 #endif
 
+  {
   WriterType::Pointer writer = WriterType::New();
   writer->SetInput(df);
   writer->SetFileName(dfImageName.c_str());
   writer->SetUseCompression(1);
   writer->Update();
+  }
+
+  {
+  WriterType::Pointer writer = WriterType::New();
+  writer->SetInput(dfInverse);
+  writer->SetFileName(dfInverseImageName.c_str());
+  writer->SetUseCompression(1);
+  writer->Update();
+  }
 
   if(0){
     MaskWriterType::Pointer writer = MaskWriterType::New();

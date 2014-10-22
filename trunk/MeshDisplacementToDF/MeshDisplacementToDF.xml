@@ -30,10 +30,18 @@
 
     <image>
       <name>dfImageName</name>
-      <label>Output deformation field</label>
+      <label>Output reference to moving image deformation field</label>`
       <channel>output</channel>
       <description>Deformation field</description>
       <index>2</index>
+    </image>
+
+    <image>
+      <name>dfInverseImageName</name>
+      <label>Output moving image to reference deformation field</label>
+      <channel>output</channel>
+      <description>Deformation field</description>
+      <index>3</index>
     </image>
 
     </parameters>
