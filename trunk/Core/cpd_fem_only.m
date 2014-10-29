@@ -69,18 +69,42 @@ if (nargin < 10 || isempty(sigma2))
     diff = XX-YY;
     diff = diff.*diff;
     err2 = sum(diff(:));
-    sigma2 = 1/(D*N*M)*err2
+    sigma2 = 1/(D*N*M)*err2;
     clear diff;
 end
 
 if (nargin < 14 || isempty(fem))
     [nodes, ~, elems] = tetgen_mex(Y', F',[],'');
+    
     fem = fem_model(nodes', elems');
     setAbortJacobian(fem, EPSILON);      % abort on inverted elements
 end
 
 if (nargin < 15 || isempty(Phi))
-    Phi = [speye(M),zeros(M, size(nodes,2)-M)];
+    
+    NN = size(nodes,2);
+    diff = (nodes(:,1:M)-Y');
+    if (norm(diff(:)) > EPSILON)
+        % surface nodes were added, need to adjust Phi accordingly
+        cols = zeros(1,M);
+        nidx = 1;
+        for i=1:size(Y,1)
+            nerr = nodes(:,nidx) - Y(i,:)';
+            % search forward for correct node id
+            while ( (norm(nerr) > EPSILON) )
+                nidx = nidx+1;
+                nerr = nodes(:,nidx) - Y(i,:)';
+            end
+            cols(i) = nidx;
+            nidx = nidx+1;
+        end
+        Phi = sparse(1:M, cols, ones(1,M), M, NN);
+    else
+        Phi = sparse(1:M, 1:M, ones(1,M), M, NN);
+    end
+    
+    clear diff cols nidx nerr NN;
+    
 end
 
 if (nargin < 16 || isempty(FV))
@@ -99,7 +123,7 @@ Phi_tilde = kron(Phi, eye(D));
 iters = 0;
 err = errtol+1;
 
-C = ones(D,1);  % temp, so we don't keep recreating, for rigid transform    
+% C = ones(D,1);  % temp, so we don't keep recreating, for rigid transform    
 u_vec = [];
 while ((iters < maxiters) && (err > errtol))
     
@@ -108,40 +132,40 @@ while ((iters < maxiters) && (err > errtol))
     P1(P1<1e-10) = 1e-10;
         
     % Here, TY is just Y+V
-    TY = y_vec+v_vec;
-    TY = reshape(TY,D,[])';
+    % TY = y_vec+v_vec;
+    % TY = reshape(TY,D,[])';
     
     % M-step
     % Rigid align
-%     mux = sum(P*X,1)/Np;
-%     muy = sum(P'*TY,1)/Np;
-% 
-%     % recompute because P changed, causing mux/y to change
-%     XX = bsxfun(@minus, X, mux);
-%     YY = bsxfun(@minus, TY, muy);
-%     A = XX'*P'*YY;    
-%     [U, ~, V] = svd(A);
-%     C(D) = det(U*V');
-%     R = U*diag(C)*V';
-%     s = trace(A'*R)/trace(YY'*diag(P1)*YY);
-%     t = mux' - s*R*(muy');
+    %     mux = sum(P*X,1)/Np;
+    %     muy = sum(P'*TY,1)/Np;
+    % 
+    %     % recompute because P changed, causing mux/y to change
+    %     XX = bsxfun(@minus, X, mux);
+    %     YY = bsxfun(@minus, TY, muy);
+    %     A = XX'*P'*YY;    
+    %     [U, ~, V] = svd(A);
+    %     C(D) = det(U*V');
+    %     R = U*diag(C)*V';
+    %     s = trace(A'*R)/trace(YY'*diag(P1)*YY);
+    %     t = mux' - s*R*(muy');
 
     % FEM step
     dP1 = spdiags(kron(P1,ones(D,1)),0,D*M,D*M);
     LHS = s*s*(Phi_tilde')*dP1*Phi_tilde + beta*sigma2*K;
     RHS = -s*(P*X)*R;
     RHS = -Phi_tilde'*(reshape(RHS',[],1)+dP1*(s*s*y_vec+s*repmat(R'*t,M,1)));
-    s1 = warning('error', 'MATLAB:singularMatrix');
-    warning('error', 'MATLAB:singularMatrix');
+    s1 = warning('error', 'MATLAB:singularMatrix'); %#ok<CTPCT>
+    warning('error', 'MATLAB:singularMatrix'); %#ok<CTPCT>
     if ( ~isempty(u_vec) )
         u_vec_old = u_vec;
     end
     try
       % Regular processing part
       u_vec = LHS\RHS;
-    catch
+    catch err1
       % Exception-handling part
-      fprintf('Can''t solve linear system (reason: %s)\n', lasterr);
+      fprintf('Can''t solve linear system (reason: %s)\n', err1);
       u_vec = u_vec_old;
       iters = maxiters;
     end
@@ -177,8 +201,12 @@ while ((iters < maxiters) && (err > errtol))
         TYstiff = y_vec;
         TYstiff = reshape(TYstiff,D,[])';
         TYstiff = bsxfun(@plus, TYstiff*(R')*s, t');
+        YFV.vertices = TY;
+        YFV.faces = F;
         plot3(TYstiff(:,1), TYstiff(:,2), TYstiff(:,3),'og','MarkerSize', 5, 'MarkerFaceColor', 'g');
-        plot3(TY(:,1), TY(:,2), TY(:,3),'ob','MarkerSize', 5, 'MarkerFaceColor', 'b');
+        
+        patch(YFV,'FaceColor','blue','FaceAlpha',0.2, 'EdgeColor', 'blue', 'EdgeAlpha',0.2);
+        % plot3(TY(:,1), TY(:,2), TY(:,3),'ob','MarkerSize', 5, 'MarkerFaceColor', 'b');
         % axis([-3,3,-3,3,-3,3]);
         legend({'target','rest','fem'},'location','NEo')
         view(az, el);

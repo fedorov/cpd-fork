@@ -16,7 +16,7 @@ D = fem_material_linear(E, nu);
 [R, c, w] = tight_box(getNodes(model));
 
 % 1000 pnts in [0 1]^3
-NP = 100000;
+NP = 1000;
 pnts = rand(NP, 3);
 pnts = (pnts - 0.5).*repmat(w, [size(pnts,1) 1]);
 pnts = pnts*R + repmat(c, [size(pnts,1) 1]);
@@ -30,11 +30,11 @@ tic;
 findtime = toc;
 disp(['      ...', num2str(findtime), ' (s)']);
 fprintf('      Verifying...');
-P = getInterpolationMatrix(fem, pnts);
-nodes = getNodes(fem);
+P = getInterpolationMatrix(model, pnts);
+nodes = getNodes(model);
 err = P*nodes - pnts;
 err = sum(err.*err,2);
-if (max(abs(err)) > 1e-14)
+if (max(abs(err)) < 1e-14)
     fprintf(' PASSED :)\n');
 else 
     fprintf(' FAILED :( :(\n');

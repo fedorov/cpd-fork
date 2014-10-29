@@ -15,7 +15,8 @@ else
     femPrefix = [femPrefix '_affine'];
 end
 
-femPrefix
+fprintf('FEM Prefix: ');
+disp(femPrefix);
 
 % caseId='9';
 caseId=num2str(caseId);
@@ -23,28 +24,32 @@ caseId=num2str(caseId);
 add_bcpd_paths;
 
 dataPath = '/Users/fedorov/Documents/Projects/BRP/MR-US-registration';
-casePath = [ dataPath '/Case' caseId];
+% casePath = [ dataPath '/Case' caseId];
+% dataPath = [root '/data/BWHTestData'];
+% casePath = [ dataPath '/Case' caseId];
 
 [landmarksMR,landmarksUS] = readBWHlandmarks(dataPath, caseId);
 
-fprintf('Landmarks read:')
-landmarksMR
-landmarksUS
+fprintf('Landmarks read:\n')
+fprintf('MR landmarks:\n');
+disp(landmarksMR);
+fprintf('US landmarks:\n');
+disp(landmarksUS);
 
 fixedModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth.ply'];
 fixedPartialModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth-cut10.ply'];
 movingModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-MR-smooth.ply'];
 registeredPath = [ dataPath '/Case' caseId '/CPD_registration/'];
+% fixedModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth.ply'];
+% fixedPartialModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth-cut10.ply'];
+% movingModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-MR-smooth.ply'];
+% registeredPath = [ dataPath '/Case' caseId '/Results2/'];
 
 %% Read in the surfaces
 [fixedVertices,fixedFaces] = read_ply(fixedModelName);
 [fixedPartialVertices,fixedPartialFaces] = read_ply(fixedPartialModelName);
 [movingVertices,movingFaces] = read_ply(movingModelName);
-fprintf('Read input surfaces');
-
-% The Slicer model has too many vertices and faces. I need to downsample
-% it to use it.
-numberOfFaces = 1800;
+fprintf('Read input surfaces\n');
 
 fixed.faces = fixedFaces;
 fixed.vertices = fixedVertices;
@@ -55,14 +60,22 @@ fixedPartial.vertices = fixedPartialVertices;
 moving.faces = movingFaces;
 moving.vertices = movingVertices;
 
+% The Slicer model has too many vertices and faces. I need to downsample
+% it to use it.
+% numberOfFaces = 1800;
 % fixed points
 %nfx = reducepatch(pX,numberOfFaces);
 % moving surface
 %nfy = reducepatch(pY,numberOfFaces);
 
 %% Non-rigid registration parameters
-w=0.00; errtol=1e-4; maxiters=500; sigma2=10;
-beta=0.12; E=4.8; nu=0.49;
+errtol=1e-4; maxiters=500; sigma2=10;
+beta=0.3; E=4.8; nu=0.49;
+if usePartialData
+    w = 0.1;  % 10% missing data?
+else
+    w = 0.01;  % maybe 1% outliers
+end
 
 % TODO: rigid alignment is not robust with partial data; need to do rigid
 % initialization using full data, and then FEM on partial
@@ -71,59 +84,43 @@ tic;
 %[TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(pX.vertices, pY.vertices, pY.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
 %[TYrigidfem, ~, ~, ~, ~, ~, ~, ~] = cpd_rigid_fem(pX.vertices, [], pY.vertices, pY.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu);
 
-
 if useRigid == 1
     fprintf('Before rigid registration\n');
-    [TYrigidOrAffine,B_rigid,t_rigid,~,~] = cpd_rigid(fixed.vertices, moving.vertices, w, errtol, maxiters, [], [], 0, sigma2);
+    [TYrigidOrAffine,B_rigid,t_rigid,s_rigid,~] = cpd_rigid(fixed.vertices, moving.vertices, w, errtol, maxiters);
+    B_rigid = B_rigid*s_rigid;  % fold in scale
     fprintf('Rigid registration completed\n');
-    landmarksRigid = [];
-    numLandmarks = size(landmarksMR,1);
-    for l=1:numLandmarks
-        lm = landmarksMR(l,:);
-        registered = [];
-        registered = bsxfun(@plus,lm*(B_rigid'),t_rigid');
-        landmarksRigid = [landmarksRigid; registered];
-    end
+    landmarksRigid = bsxfun(@plus,landmarksMR*(B_rigid'),t_rigid');
 
-    rigidResult.TY = TYrigidOrAffine;
-    rigidResult.B = B_rigid;
-    rigidResult.t = t_rigid;
+    rigidResult = struct('TY', TYrigidOrAffine, 'B', B_rigid, 't', t_rigid);
+    disp([rigidResult.B rigidResult.t]);
+
+    % write results
     rigidResultFilename = [ registeredPath '/case' caseId '_rigid.mat'];
     save(rigidResultFilename, 'rigidResult');
     rigidSurfaceFilename = [ registeredPath '/case' caseId '_rigid.ply'];
     write_ply(TYrigidOrAffine, moving.faces, rigidSurfaceFilename);
-
     writeLinearTransform([ registeredPath '/case' caseId '_rigid.tfm'], rigidResult.B, rigidResult.t);
-
     writeBWHlandmarks(registeredPath, caseId, 'rigidReg', landmarksRigid);
 
-    fprintf('Rigid results saved');
+    fprintf('Rigid results saved\n');
 
     landmarksPreRegistered = landmarksRigid;
 else
-    [TYrigidOrAffine,B_affine,t_affine,~,~] = cpd_affine(fixed.vertices, moving.vertices, w, errtol, maxiters, [], [], sigma2);
-    landmarksAffine = [];
-    numLandmarks = size(landmarksMR,1);
-    for l=1:numLandmarks
-        lm = landmarksMR(l,:);
-        registered = [];
-        registered = bsxfun(@plus,lm*(B_affine'),t_affine');
-        landmarksAffine = [landmarksAffine; registered];
-    end
+ [TYrigidOrAffine,B_affine,t_affine,~,~] = cpd_affine(fixed.vertices, moving.vertices, w, errtol, maxiters);
+    landmarksAffine = bsxfun(@plus,landmarksMR*(B_affine'),t_affine');
+    affineResult = struct('TY', TYrigidOrAffine, 'B', B_affine,'t', t_affine);
+    fprintf('Affine results saved\n');
+    disp([affineResult.B affineResult.t]);
 
-    affineResult.TY = TYrigidOrAffine;
-    affineResult.B = B_affine;
-    affineResult.t = t_affine;
+    % write results
     affineResultFilename = [ registeredPath '/case' caseId '_affine.mat'];
     save(affineResultFilename, 'affineResult');
     affineSurfaceFilename = [ registeredPath '/case' caseId '_affine.ply'];
     write_ply(TYrigidOrAffine, moving.faces, affineSurfaceFilename);
-
     writeLinearTransform([ registeredPath '/case' caseId '_affine.tfm'], affineResult.B, affineResult.t);
-
     writeBWHlandmarks(registeredPath, caseId, 'affineReg', landmarksAffine);
 
-    fprintf('Affine results saved');
+    fprintf('Affine results saved\n');
     
     landmarksPreRegistered = landmarksAffine;
 
@@ -131,16 +128,13 @@ end
 
 time=toc; fprintf('Initial registration time is %f seconds\n', time);
 
-% estimate of the missing data
-w=0.2;
-
 tic;
 if usePartialData
-    fprintf('Registering with partial data:')
+    fprintf('Registering with partial data:\n')
     size(fixedPartial.vertices)
-    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixedPartial.vertices, TYrigidOrAffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
+    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixedPartial.vertices, TYrigidOrAffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, [], beta, E, nu);
 else
-    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixed.vertices, TYrigidOrAffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, sigma2, beta, E, nu, [], [], []);
+    [TYfem, ~, ~, ~, ~, newSigma2, ~, fem, u, ~] = cpd_fem_only(fixed.vertices, TYrigidOrAffine, moving.faces, w, errtol, maxiters, eye(3), [0;0;0], 1.0, [], beta, E, nu);
 end
 
 
@@ -151,28 +145,64 @@ femResult.sigma2 = newSigma2;
 femResult.fem = fem;
 femResult.u = u;
 
+% write results
 femResultFilename = [ registeredPath '/case' caseId '_' femPrefix '_fem.mat'];
 save(femResultFilename, 'femResult');
 femSurfaceFilename = [ registeredPath '/case' caseId '_' femPrefix '_fem.ply'];
 write_ply(TYfem, moving.faces, femSurfaceFilename);
 meshFileName = [ registeredPath '/case' caseId '_' femPrefix '_fem_result_mesh.vtk'];
 writeFEMvtk(fem,u,meshFileName,1);
-
-Phi = getInterpolationMatrix(fem, landmarksPreRegistered);
 time=toc; fprintf('FEM interpolation time is %f seconds\n', time);
-fprintf('FEM results saved');
+fprintf('FEM results saved\n');
 
-landmarksFEM = landmarksPreRegistered+Phi*u
+% Interpolate landmarks
+Phi = getInterpolationMatrix(fem, landmarksPreRegistered);
+landmarksFEM = landmarksPreRegistered+Phi*u;
 
-landmarksUS
+fprintf('FEM landmarks:\n');
+disp(landmarksFEM);
+fprintf('US landmarks\n');
+disp(landmarksUS);
 
+initial_error = sqrt(sum((landmarksMR-landmarksUS).*(landmarksMR-landmarksUS),2));
+affine_error = sqrt(sum((landmarksPreRegistered-landmarksUS).*(landmarksPreRegistered-landmarksUS),2));
+fem_error = sqrt(sum((landmarksFEM-landmarksUS).*(landmarksFEM-landmarksUS),2));
+
+fprintf('Initial error:\n');
+disp(initial_error);
+fprintf('Rigid/Affine error:\n');
+disp(affine_error);
+fprintf('FEM error:\n');
+disp(fem_error);
+
+% Write landmarks and errors
 writeBWHlandmarks(registeredPath, caseId, ['_' femPrefix 'femReg_'], landmarksFEM);
-
-initial_error = sqrt(sum((landmarksMR-landmarksUS).*(landmarksMR-landmarksUS),2))
-affine_error = sqrt(sum((landmarksPreRegistered-landmarksUS).*(landmarksPreRegistered-landmarksUS),2))
-fem_error = sqrt(sum((landmarksFEM-landmarksUS).*(landmarksFEM-landmarksUS),2))
-
 writeBWHErrors(initial_error, affine_error, fem_error, [registeredPath '/case' caseId femPrefix '_errors.txt']);
+
+% display landmarks
+figure(2);
+subplot(1,3,1);
+patch(moving,'FaceColor','blue','FaceAlpha',0.2, 'EdgeColor', 'blue', 'EdgeAlpha',0.2);
+hold('on');
+plot3(landmarksMR(:,1), landmarksMR(:,2), landmarksMR(:,3), 'ok', 'MarkerSize', 5, 'MarkerFaceColor', 'k');
+title('MR (moving)');
+subplot(1,3,2);
+patch(fixed,'FaceColor','red','FaceAlpha',0.2, 'EdgeColor', 'red', 'EdgeAlpha',0.2);
+hold('on');
+plot3(landmarksUS(:,1), landmarksUS(:,2), landmarksUS(:,3), 'ok', 'MarkerSize', 5, 'MarkerFaceColor', 'k');
+title('US (fixed)');
+subplot(1,3,3);
+plot3(landmarksUS(:,1), landmarksUS(:,2), landmarksUS(:,3), 'or', 'MarkerSize', 5, 'MarkerFaceColor', 'r');
+hold('on');
+plot3(landmarksFEM(:,1), landmarksFEM(:,2), landmarksFEM(:,3), 'ob', 'MarkerSize', 5, 'MarkerFaceColor', 'b');
+plot3([landmarksFEM(:,1)'; landmarksUS(:,1)'],...
+    [landmarksFEM(:,2)'; landmarksUS(:,2)'],...
+    [landmarksFEM(:,3)'; landmarksUS(:,3)'], 'k-');
+patch(fixed,'FaceColor','red','FaceAlpha',0.05, 'EdgeColor', 'red', 'EdgeAlpha',0.05);
+moved.vertices = femResult.TY;
+moved.faces = moving.faces;
+patch(moved,'FaceColor','blue','FaceAlpha',0.05, 'EdgeColor', 'blue', 'EdgeAlpha',0.05);
+title('Landmark Error');
 
 end
 
@@ -180,29 +210,31 @@ end
 function [MRl, USl] = readBWHlandmarks(path,caseId)
 
 MRfileName = [path '/Annotation/Case' caseId '/MR-fiducials.fcsv'];
+% MRfileName = [path '/Case' caseId '/Input/MR-fiducials.fcsv'];
 fprintf('Reading MR fiducials from %s\n',MRfileName);
 C=textscan(fopen(MRfileName,'r'),'%s','Delimiter','\n');
 num=size(C{1},1);
-MRl = [];
+MRl = zeros(num-3,3);
 for i=4:num
   coordStr = strsplit(C{1}{i},',');
   coordX = coordStr(2);
   coordY = coordStr(3);
   coordZ = coordStr(4);
-  MRl = [ MRl; str2num(coordX{1}) str2num(coordY{1}) str2num(coordZ{1}) ];
+  MRl(i-3,:) = [ str2double(coordX{1}) str2double(coordY{1}) str2double(coordZ{1}) ];
 end
 
 USfileName = [path '/Annotation/Case' caseId '/US-fiducials.fcsv'];
+% USfileName = [path '/Case' caseId '/Input/US-fiducials.fcsv'];
 fprintf('Reading US fiducials from %s\n',USfileName);
 C=textscan(fopen(USfileName,'r'),'%s','Delimiter','\n');
 num=size(C{1},1);
-USl = [];
+USl = zeros(num-3,3);
 for i=4:num
   coordStr = strsplit(C{1}{i},',');
   coordX = coordStr(2);
   coordY = coordStr(3);
   coordZ = coordStr(4);
-  USl = [ USl; str2num(coordX{1}) str2num(coordY{1}) str2num(coordZ{1}) ];
+  USl(i-3,:) = [str2double(coordX{1}) str2double(coordY{1}) str2double(coordZ{1}) ];
 end
 
 end

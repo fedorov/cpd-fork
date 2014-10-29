@@ -1,3 +1,6 @@
+% get root of current file
+root = fullfile(fileparts(mfilename('fullpath')),'../');
+
 p_generated = genpath([root '/Core']);
 addpath(p_generated);
 addpath([root '/IO']);
