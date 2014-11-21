@@ -10,7 +10,8 @@ model = fem_model( getNodes(beam), getElements(beam) );
 %% Material parameters
 
 E = 480; nu = 1/3;
-D = fem_material_linear(E, nu);
+D = fem_material_linear.getElasticity(E, nu);
+Dmat = fem_material_linear(E, nu);
 
 %% Stiffness matrix computations
 
@@ -21,7 +22,7 @@ model_time = toc;
 fprintf('Elapsed time is %f seconds\n', model_time);
 fprintf('...again\n');
 tic;
-K2 = getStiffnessMatrix(beam, D, 1);
+K2 = getStiffnessMatrix(beam, Dmat, 1);
 model_time_2 = toc;
 fprintf('Elapsed time is %f seconds\n', model_time_2);
 

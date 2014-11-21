@@ -111,6 +111,8 @@ classdef fem_element < handle
                     (322-13*sqrt(70))/900*[1;1]];
             end
         end
+        
+        
     end
     
     %% Access methods
@@ -280,10 +282,10 @@ classdef fem_element < handle
             
         end
         
-        function [K, minJ] = getK(this, D, X)
-            % Computes the stiffness matrix for this element
+        function [K, minJ] = getLinearK(this, D, X)
+            % Computes the linear stiffness matrix for this element
             %
-            % [K, minJ] = getK(elem, D, X)
+            % [K, minJ] = getLinearK(elem, D, X)
             %   Computes the element stiffness matrix, and optionally
             %   returns the minimum deformation gradient determinant,
             %   useful for determining if an element has become inverted
@@ -296,7 +298,8 @@ classdef fem_element < handle
             n = getNumNodes(this);
             K = zeros([3*n,3*n]);
             minJ = inf;
-            
+                
+            % linear material
             for i=1:length(w)
                 dNds = getdN(this,ipnts(i,1),ipnts(i,2),ipnts(i,3));
                 J = getJ(this,dNds,X);
@@ -308,6 +311,7 @@ classdef fem_element < handle
                 B = getB(this,dNdx);
                 K = K + w(i)*detJ*(B'*D*B);
             end
+            
         end
         
         function M = getM(this, X)
@@ -344,9 +348,18 @@ classdef fem_element < handle
             %   useful for determining if an element is inverted.
             %
             %   D:  the 6x6 elasticity matrix
+            %      OR
+            %      Object of type fem_material, which will compute a 6x6
+            %      elasticity matrix with 
+            %          getStiffnessMatrix(D, this, nodeArray)
             %   nodeArray: the Nx3 matrix respresenting the set of ALL
             %       nodes, not just the ones belonging to this element
-            [K, minJ] = getK(this, D, nodeArray(this.nodeIdxs,:));
+            
+            if (isa(D,'fem_material'))
+                [K, minJ] = getStiffnessMatrix(D, this, nodeArray);
+            else
+                [K, minJ] = getLinearK(this, D, nodeArray(this.nodeIdxs,:));
+            end
         end
         
         function M = getMassMatrix(this, nodeArray)
@@ -358,6 +371,10 @@ classdef fem_element < handle
             %   nodeArray: the Nx3 matrix respresenting the set of ALL
             %       nodes, not just the ones belonging to this element
             M = getM(this, nodeArray(this.nodeIdxs,:));
+        end
+        
+        function delete(this)
+            % nothing
         end
         
     end

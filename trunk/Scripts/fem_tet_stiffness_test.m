@@ -36,7 +36,8 @@ E_tet_idxs_multi = [ 5 1 4 2;
 E = 480;
 nu = 1/3;
 
-D = fem_material_linear(E,nu);
+D = fem_material_linear.getElasticity(E,nu);
+Dmat = fem_material_linear(E, nu);
 
 %% Tet stiffness from objects
 elem1 = num2cell(fem_element.create(E_tet_idxs));

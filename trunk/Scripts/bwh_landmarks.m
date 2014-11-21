@@ -26,6 +26,8 @@ dataPath = [root '/data/BWHTestData'];
 % casePath = [ dataPath '/Case' caseId];
 
 [landmarksMR,landmarksUS] = readBWHlandmarks(dataPath, caseId);
+landmarksMR = landmarksMR([1,4,5],:);
+landmarksUS = landmarksUS([1,4,5],:);
 
 fprintf('Landmarks read:\n')
 fprintf('MR landmarks:\n');

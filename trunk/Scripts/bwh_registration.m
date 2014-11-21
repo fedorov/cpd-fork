@@ -23,12 +23,15 @@ caseId=num2str(caseId);
 
 add_bcpd_paths;
 
-dataPath = '/Users/fedorov/Documents/Projects/BRP/MR-US-registration';
+% dataPath = '/Users/fedorov/Documents/Projects/BRP/MR-US-registration';
 % casePath = [ dataPath '/Case' caseId];
-% dataPath = [root '/data/BWHTestData'];
+dataPath = [root '/data/BWHTestData'];
 % casePath = [ dataPath '/Case' caseId];
 
 [landmarksMR,landmarksUS] = readBWHlandmarks(dataPath, caseId);
+% remove two largest error ones
+landmarksMR = landmarksMR([1,4,5],:);
+landmarksUS = landmarksUS([1,4,5],:);
 
 fprintf('Landmarks read:\n')
 fprintf('MR landmarks:\n');
@@ -36,14 +39,14 @@ disp(landmarksMR);
 fprintf('US landmarks:\n');
 disp(landmarksUS);
 
-fixedModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth.ply'];
-fixedPartialModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth-cut10.ply'];
-movingModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-MR-smooth.ply'];
-registeredPath = [ dataPath '/Case' caseId '/CPD_registration/'];
-% fixedModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth.ply'];
-% fixedPartialModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth-cut10.ply'];
-% movingModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-MR-smooth.ply'];
-% registeredPath = [ dataPath '/Case' caseId '/Results2/'];
+% fixedModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth.ply'];
+% fixedPartialModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-US-smooth-cut10.ply'];
+% movingModelName = [ dataPath '/Case' caseId '/SmoothReg/case' caseId '-MR-smooth.ply'];
+% registeredPath = [ dataPath '/Case' caseId '/CPD_registration/'];
+fixedModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth.ply'];
+fixedPartialModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-US-smooth-cut10.ply'];
+movingModelName = [ dataPath '/Case' caseId '/Input/case' caseId '-MR-smooth.ply'];
+registeredPath = [ dataPath '/Case' caseId '/Results2/'];
 
 %% Read in the surfaces
 [fixedVertices,fixedFaces] = read_ply(fixedModelName);
@@ -128,6 +131,7 @@ end
 
 time=toc; fprintf('Initial registration time is %f seconds\n', time);
 
+figure(1);  % switch to figure 1
 tic;
 if usePartialData
     fprintf('Registering with partial data:\n')
@@ -209,8 +213,8 @@ end
 
 function [MRl, USl] = readBWHlandmarks(path,caseId)
 
-MRfileName = [path '/Annotation/Case' caseId '/MR-fiducials.fcsv'];
-% MRfileName = [path '/Case' caseId '/Input/MR-fiducials.fcsv'];
+% MRfileName = [path '/Annotation/Case' caseId '/MR-fiducials.fcsv'];
+MRfileName = [path '/Case' caseId '/Input/MR-fiducials.fcsv'];
 fprintf('Reading MR fiducials from %s\n',MRfileName);
 C=textscan(fopen(MRfileName,'r'),'%s','Delimiter','\n');
 num=size(C{1},1);
@@ -223,8 +227,8 @@ for i=4:num
   MRl(i-3,:) = [ str2double(coordX{1}) str2double(coordY{1}) str2double(coordZ{1}) ];
 end
 
-USfileName = [path '/Annotation/Case' caseId '/US-fiducials.fcsv'];
-% USfileName = [path '/Case' caseId '/Input/US-fiducials.fcsv'];
+% USfileName = [path '/Annotation/Case' caseId '/US-fiducials.fcsv'];
+USfileName = [path '/Case' caseId '/Input/US-fiducials.fcsv'];
 fprintf('Reading US fiducials from %s\n',USfileName);
 C=textscan(fopen(USfileName,'r'),'%s','Delimiter','\n');
 num=size(C{1},1);

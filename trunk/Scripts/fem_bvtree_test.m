@@ -9,7 +9,7 @@ model = fem_model( getNodes(beam), getElements(beam) );
 
 %% Material parameters
 E = 480; nu = 1/3;
-D = fem_material_linear(E, nu);
+D = fem_material_linear.getElasticity(E, nu);
 
 %% Containing element
 

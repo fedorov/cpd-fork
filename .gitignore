@@ -1,0 +1,16 @@
+# library files
+*.dll
+*.mexa64
+*.mexw64
+*.mexmaci64
+*.so
+*.exe
+
+# temporary files
+*~
+
+/trunk/data/
+build
+
+# images
+*.png

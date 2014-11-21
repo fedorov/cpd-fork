@@ -65,7 +65,7 @@ E_hex_idxs_multi = [ 1  2  5  4 10 11 14 13;
 E = 480;
 nu = 1/3;
 
-D = fem_material_linear(E,nu);
+D = fem_material_linear.getElasticity(E,nu);
 
 %% Hex stiffness from objects
 elem1 = num2cell(fem_element.create(E_hex_idxs));

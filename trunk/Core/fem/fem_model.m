@@ -37,6 +37,69 @@ classdef fem_model < handle
         sparse_s = [];
     end
     
+    %% static methods
+    methods (Static)
+        function fem = createBeam(widths, enum, centre, rotation)
+            % Initializes a standard hexahedral beam model
+            %
+            % createBeam(model, widths, enum, centre, rotation)
+            %   Initializes a standard hexahedral beam model
+            %
+            %   widths:   1x3 lengths of the three sides
+            %   enum:     1x3 number of elements along each dimension
+            %   centre:   centre of the beam (optional, default = [0,0,0])
+            %   rotation: 3x3 rotation matrix for the beam, where rotation
+            %             is applied by post-multiplication: y = xR
+            %             (optional, default = identity)
+            
+            if (nargin < 3 || isempty(centre))
+                centre = [0, 0, 0];
+            end
+            if (nargin < 4 || isempty(rotation))
+                rotation = eye(3);
+            end
+            
+            dx = widths./enum;
+            nsize = enum+1;
+            numNodes = prod(nsize);
+            numElems = prod(enum);
+            
+            nnodes = zeros(numNodes,3);
+            nelems{numElems,1} = [];  % init
+            
+            % build nodes
+            idx = 1;
+            for k=0:enum(3)
+                for j=0:enum(2)
+                    for i = 0:enum(1)
+                        pos = [i*dx(1), j*dx(2), k*dx(3)] - widths/2;
+                        pos = pos*(rotation)+centre;
+                        
+                        nnodes(idx,:) = pos;
+                        idx = idx+1;
+                    end
+                end
+            end
+            
+            % build elements
+            idx = 1;
+            for k=1:enum(3)
+                z = [k; k; k; k; k+1; k+1; k+1; k+1];
+                for j=1:enum(2)
+                    y = [j; j; j+1; j+1; j; j; j+1; j+1];
+                    for i = 1:enum(1)
+                        x = [i; i+1; i+1; i; i; i+1; i+1; i];
+                        n = sub2ind(nsize,x,y,z);
+                        nelems{idx} = fem_hex_element(n');
+                        idx = idx+1;
+                    end
+                end
+            end
+            
+            fem = fem_model(nnodes, nelems);
+        end
+    end
+    
     %% Public methods
     methods
         
@@ -65,9 +128,10 @@ classdef fem_model < handle
             
         end
         
-        function setSurfaceMesh(this, faces)
-            this.smesh = faces;
-            buildSMeshTree(this, faces);
+        function setSurfaceMesh(this, verts, faces)
+            this.smesh.vertices = verts;
+            this.smesh.faces = faces;
+            buildSMeshTree(this);
         end
         
         function buildSMeshTree(this, smesh)
@@ -77,9 +141,11 @@ classdef fem_model < handle
             
             if (nargin < 2 || isempty(smesh))
                 smesh = this.smesh;
+            else
+                this.smesh = smesh;
             end
             
-            this.smesh_tree = smesh_bvtree(this.nodes', smesh');
+            this.smesh_tree = smesh_bvtree(smesh.vertices', smesh.faces');
         end
         
         function buildBVTree(this)
@@ -280,6 +346,11 @@ classdef fem_model < handle
             this.elasticity = D;
         end
         
+        function setMaterial(this, mat)
+             % Sets the fem_material for this model
+            this.elasticity = mat;
+        end
+        
         function [K, minJ]= getStiffnessMatrix(this, D, symmetric)
             % Computes the global stiffness matrix for linear elastic model
             %
@@ -291,6 +362,10 @@ classdef fem_model < handle
             %
             %   D: 6x6 elasticity matrix (optional, defaults to elasticity
             %      stored in the model)
+            %      OR
+            %      Object of type fem_material, which will compute the
+            %      local stiffness matrix block
+            %          getStiffnessMatrix(fem_material, point)
             %   symmetric: if 1, enforces symmetry by setting Ksym=(K+K')/2
             %       (optional, default = 0)
             %   K: output stiffness matrix
@@ -625,6 +700,23 @@ classdef fem_model < handle
             
             this.abortDeterminant = detJ;
         end
+        
+        function delete(this)
+            if (~isempty(this.smesh_tree) && this.smesh_tree ~= 0)
+                delete(this.smesh_tree)
+            end
+            if (~isempty(this.tree) && this.tree ~= 0)
+                delete(this.tree)
+            end
+            if (~isempty(this.elasticity) && isa(this.elasticity,'fem_material'))
+                delete(this.elasticity)
+            end
+            for i=1:numel(this.elems)
+                delete(this.elems{i})
+            end
+            this.elems = {};
+        end
+        
     end
     
     methods (Access = protected)

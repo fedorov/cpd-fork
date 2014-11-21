@@ -89,7 +89,7 @@ if (nargin < 10 || isempty(sigma2))
 end
 
 % FEM stuff
-D_material = fem_material_linear(E, nu); 
+D_material = fem_material_linear.getElasticity.getElasticity(E, nu); 
 [nodes, ~, elems] = tetgen_mex(Y', (SSM.faces)',[],'');
 Phi = [speye(M),zeros(M, size(nodes,2)-M)];
 Phi_tilde = kron(Phi, eye(D));

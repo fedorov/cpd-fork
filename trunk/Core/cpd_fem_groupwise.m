@@ -13,7 +13,7 @@ sigma2 = zeros(length(subj), 1); %Placeholder for sigma2 for each member of popu
 variation = cell(1,setNr);
 
 % FEM stuff
-D_material = fem_material_linear(opt.E, opt.nu); 
+D_material = fem_material_linear.getElasticity.getElasticity(opt.E, opt.nu); 
 
 for i=1:setNr
     N(i) = size(subj{i}, 1);

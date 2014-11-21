@@ -15,7 +15,7 @@ fem = fem_model(nodes', elems');
 Nfem = size(nodes,2);
 
 % FEM stuff
-D_material = fem_material_linear(E, nu); 
+D_material = fem_material_linear.getElasticity.getElasticity(E, nu); 
 
 % get stiffness matrix
 [K, ~] = getStiffnessMatrix(fem, D_material);

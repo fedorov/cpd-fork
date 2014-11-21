@@ -19,7 +19,7 @@ Y = SSM.mean;
 [N, ~, E] = tetgen_mex(Y', F',[],'');
 prostate = fem_model(N', E');
 
-D = fem_material_linear(44000, 0.4);
+D = fem_material_linear.getElasticity(44000, 0.4);
 
 % Tell prostate to abort stiffness computation for inverted elements
 setAbortJacobian(prostate, 1e-10);    

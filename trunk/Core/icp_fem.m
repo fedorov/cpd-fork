@@ -71,7 +71,7 @@ if (nargin < 11 || isempty(FV))
 end
 
 % FEM stuff
-D_material = fem_material_linear(E, nu);
+D_material = fem_material_linear.getElasticity(E, nu);
 
 % compute stiffness
 [K, minJ] = getStiffnessMatrix(fem, D_material);
